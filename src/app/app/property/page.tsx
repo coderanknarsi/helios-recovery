@@ -8,6 +8,7 @@ import {
   createHouse,
   createRoom,
   createBeds,
+  updateBed,
   setBedStatus,
   deleteBed,
   deleteRoom,
@@ -317,77 +318,128 @@ export default async function PropertyPage() {
                               return (
                                 <div
                                   key={bed.id}
-                                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2.5"
+                                  className="rounded-lg border border-border bg-surface"
                                 >
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <BedDouble className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                      <span className="truncate text-sm font-medium">
-                                        {bed.label}
-                                      </span>
-                                      <span
-                                        className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${
-                                          bedStatusStyles[bed.status] ??
-                                          "bg-surface-muted text-muted-foreground"
-                                        }`}
-                                      >
-                                        {bed.status}
-                                      </span>
+                                  <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <BedDouble className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        <span className="truncate text-sm font-medium">
+                                          {bed.label}
+                                        </span>
+                                        <span
+                                          className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${
+                                            bedStatusStyles[bed.status] ??
+                                            "bg-surface-muted text-muted-foreground"
+                                          }`}
+                                        >
+                                          {bed.status}
+                                        </span>
+                                      </div>
+                                      <div className="mt-0.5 truncate pl-6 text-xs text-muted-foreground">
+                                        {occupant
+                                          ? `${occupant.firstName} ${occupant.lastName}${
+                                              occupant.status === "prospect"
+                                                ? " (hold)"
+                                                : ""
+                                            }`
+                                          : rate
+                                            ? `${rate}/mo`
+                                            : "Unassigned"}
+                                      </div>
                                     </div>
-                                    <div className="mt-0.5 truncate pl-6 text-xs text-muted-foreground">
-                                      {occupant
-                                        ? `${occupant.firstName} ${occupant.lastName}${
-                                            occupant.status === "prospect"
-                                              ? " (hold)"
-                                              : ""
-                                          }`
-                                        : rate
-                                          ? `${rate}/mo`
-                                          : "Unassigned"}
-                                    </div>
+                                    {isFree && (
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        <form action={setBedStatus}>
+                                          <input
+                                            type="hidden"
+                                            name="bedId"
+                                            value={bed.id}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            name="status"
+                                            value={
+                                              bed.status === "maintenance"
+                                                ? "available"
+                                                : "maintenance"
+                                            }
+                                          />
+                                          <button
+                                            type="submit"
+                                            className="rounded-md px-2 py-1 text-xs text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
+                                          >
+                                            {bed.status === "maintenance"
+                                              ? "Reopen"
+                                              : "Maintenance"}
+                                          </button>
+                                        </form>
+                                        <form action={deleteBed}>
+                                          <input
+                                            type="hidden"
+                                            name="bedId"
+                                            value={bed.id}
+                                          />
+                                          <button
+                                            type="submit"
+                                            title="Delete bed"
+                                            className="rounded-md p-1 text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </form>
+                                      </div>
+                                    )}
                                   </div>
-                                  {isFree && (
-                                    <div className="flex shrink-0 items-center gap-1">
-                                      <form action={setBedStatus}>
+
+                                  {/* Edit label & rate */}
+                                  <details className="border-t border-border">
+                                    <summary className="cursor-pointer list-none px-3 py-1.5 text-xs font-medium text-primary marker:content-none">
+                                      Edit
+                                    </summary>
+                                    <form
+                                      action={updateBed}
+                                      className="flex flex-wrap items-end gap-2 px-3 pb-3"
+                                    >
+                                      <input
+                                        type="hidden"
+                                        name="bedId"
+                                        value={bed.id}
+                                      />
+                                      <label className="text-sm">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                          Label
+                                        </span>
                                         <input
-                                          type="hidden"
-                                          name="bedId"
-                                          value={bed.id}
+                                          name="label"
+                                          defaultValue={bed.label}
+                                          className={`${fieldClass} w-36`}
                                         />
+                                      </label>
+                                      <label className="text-sm">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                          Monthly rate
+                                        </span>
                                         <input
-                                          type="hidden"
-                                          name="status"
-                                          value={
-                                            bed.status === "maintenance"
-                                              ? "available"
-                                              : "maintenance"
+                                          name="monthlyRate"
+                                          inputMode="decimal"
+                                          placeholder="No rate"
+                                          defaultValue={
+                                            bed.monthlyRate
+                                              ? String(Number(bed.monthlyRate))
+                                              : ""
                                           }
+                                          className={`${fieldClass} w-28`}
                                         />
-                                        <button
-                                          type="submit"
-                                          className="rounded-md px-2 py-1 text-xs text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
-                                        >
-                                          {bed.status === "maintenance"
-                                            ? "Reopen"
-                                            : "Maintenance"}
-                                        </button>
-                                      </form>
-                                      <form action={deleteBed}>
-                                        <input
-                                          type="hidden"
-                                          name="bedId"
-                                          value={bed.id}
-                                        />
-                                        <button
-                                          type="submit"
-                                          title="Delete bed"
-                                          className="rounded-md p-1 text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      </form>
-                                    </div>
-                                  )}
+                                      </label>
+                                      <button
+                                        type="submit"
+                                        className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                                      >
+                                        Save
+                                      </button>
+                                    </form>
+                                  </details>
                                 </div>
                               );
                             })}

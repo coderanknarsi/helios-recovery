@@ -127,6 +127,27 @@ export async function createBeds(formData: FormData) {
   refresh();
 }
 
+/** Edit a bed's label and/or monthly rate (allowed even while in use). */
+export async function updateBed(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const bedId = field(formData, "bedId");
+  if (!bedId) return;
+
+  const [bed] = await db
+    .select({ houseId: beds.houseId, label: beds.label })
+    .from(beds)
+    .where(eq(beds.id, bedId))
+    .limit(1);
+  if (!bed) return;
+  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+
+  const label = field(formData, "label") || bed.label;
+  const monthlyRate = parseRate(field(formData, "monthlyRate"));
+
+  await db.update(beds).set({ label, monthlyRate }).where(eq(beds.id, bedId));
+  refresh();
+}
+
 /** Toggle a bed between available and maintenance (never while in use). */
 export async function setBedStatus(formData: FormData) {
   const profile = await getCurrentProfile();
