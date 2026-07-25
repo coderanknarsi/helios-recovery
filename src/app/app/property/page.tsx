@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { Building2, DoorOpen, BedDouble, Trash2 } from "lucide-react";
 import { db } from "@/db";
 import { houses, rooms, beds, residents } from "@/db/schema";
-import { getCurrentProfile } from "@/lib/auth";
+import { getAccess } from "@/lib/access";
 import {
   createHouse,
   createRoom,
@@ -69,14 +69,18 @@ const periodAbbrev: Record<string, string> = {
 type Occupant = { firstName: string; lastName: string; status: string };
 
 export default async function PropertyPage() {
-  const profile = await getCurrentProfile();
-  const orgId = profile.orgId!;
+  const access = await getAccess();
+  const orgId = access.orgId;
+  const canEdit = access.isAdmin;
 
-  const houseRows = await db
+  const allHouses = await db
     .select()
     .from(houses)
     .where(eq(houses.orgId, orgId))
     .orderBy(asc(houses.name));
+  const houseRows = access.houseIds
+    ? allHouses.filter((h) => access.houseIds!.includes(h.id))
+    : allHouses;
   const houseIds = houseRows.map((h) => h.id);
 
   const [roomRows, bedRows, occRows] = await Promise.all([
@@ -155,67 +159,69 @@ export default async function PropertyPage() {
       </div>
 
       {/* Add house */}
-      <details className="group mt-6 rounded-xl border border-border bg-surface p-5 shadow-sm">
-        <summary className="cursor-pointer list-none text-sm font-medium text-primary marker:content-none">
-          + Add a house
-        </summary>
-        <form
-          action={createHouse}
-          className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
-        >
-          <label className="text-sm sm:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              House name
-            </span>
-            <input
-              name="name"
-              required
-              placeholder="e.g. Sunrise House"
-              className={fieldClass}
-            />
-          </label>
-          <label className="text-sm sm:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Street address
-            </span>
-            <input name="addressLine1" className={fieldClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs font-medium text-muted-foreground">
-              City
-            </span>
-            <input name="city" className={fieldClass} />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm">
+      {canEdit && (
+        <details className="group mt-6 rounded-xl border border-border bg-surface p-5 shadow-sm">
+          <summary className="cursor-pointer list-none text-sm font-medium text-primary marker:content-none">
+            + Add a house
+          </summary>
+          <form
+            action={createHouse}
+            className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            <label className="text-sm sm:col-span-2">
               <span className="text-xs font-medium text-muted-foreground">
-                State
+                House name
               </span>
-              <input name="state" className={fieldClass} />
+              <input
+                name="name"
+                required
+                placeholder="e.g. Sunrise House"
+                className={fieldClass}
+              />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Street address
+              </span>
+              <input name="addressLine1" className={fieldClass} />
             </label>
             <label className="text-sm">
               <span className="text-xs font-medium text-muted-foreground">
-                ZIP
+                City
               </span>
-              <input name="postalCode" className={fieldClass} />
+              <input name="city" className={fieldClass} />
             </label>
-          </div>
-          <label className="text-sm">
-            <span className="text-xs font-medium text-muted-foreground">
-              Phone
-            </span>
-            <input name="phone" className={fieldClass} />
-          </label>
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
-            >
-              Add house
-            </button>
-          </div>
-        </form>
-      </details>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm">
+                <span className="text-xs font-medium text-muted-foreground">
+                  State
+                </span>
+                <input name="state" className={fieldClass} />
+              </label>
+              <label className="text-sm">
+                <span className="text-xs font-medium text-muted-foreground">
+                  ZIP
+                </span>
+                <input name="postalCode" className={fieldClass} />
+              </label>
+            </div>
+            <label className="text-sm">
+              <span className="text-xs font-medium text-muted-foreground">
+                Phone
+              </span>
+              <input name="phone" className={fieldClass} />
+            </label>
+            <div className="sm:col-span-2">
+              <button
+                type="submit"
+                className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+              >
+                Add house
+              </button>
+            </div>
+          </form>
+        </details>
+      )}
 
       {houseRows.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed border-border bg-surface p-12 text-center">
@@ -224,8 +230,9 @@ export default async function PropertyPage() {
           </div>
           <h2 className="mt-4 text-base font-semibold">No houses yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-            Add your first house above, then create rooms and beds. Beds you add
-            here become assignable when you accept an application.
+            {canEdit
+              ? "Add your first house above, then create rooms and beds. Beds you add here become assignable when you accept an application."
+              : "No houses have been assigned to you yet. Ask an administrator to assign you to a house."}
           </p>
         </div>
       ) : (
@@ -258,7 +265,7 @@ export default async function PropertyPage() {
                       </p>
                     </div>
                   </div>
-                  {!houseInUse && (
+                  {canEdit && !houseInUse && (
                     <form action={deleteHouse}>
                       <input type="hidden" name="houseId" value={house.id} />
                       <button
@@ -302,7 +309,7 @@ export default async function PropertyPage() {
                               </span>
                             )}
                           </div>
-                          {roomBeds.length === 0 && !roomInUse && (
+                          {canEdit && roomBeds.length === 0 && !roomInUse && (
                             <form action={deleteRoom}>
                               <input
                                 type="hidden"
@@ -362,7 +369,7 @@ export default async function PropertyPage() {
                                             : "Unassigned"}
                                       </div>
                                     </div>
-                                    {isFree && (
+                                    {canEdit && isFree && (
                                       <div className="flex shrink-0 items-center gap-1">
                                         <form action={setBedStatus}>
                                           <input
@@ -407,69 +414,71 @@ export default async function PropertyPage() {
                                   </div>
 
                                   {/* Edit label & rate */}
-                                  <details className="border-t border-border">
-                                    <summary className="cursor-pointer list-none px-3 py-1.5 text-xs font-medium text-primary marker:content-none">
-                                      Edit
-                                    </summary>
-                                    <form
-                                      action={updateBed}
-                                      className="flex flex-wrap items-end gap-2 px-3 pb-3"
-                                    >
-                                      <input
-                                        type="hidden"
-                                        name="bedId"
-                                        value={bed.id}
-                                      />
-                                      <label className="text-sm">
-                                        <span className="text-xs font-medium text-muted-foreground">
-                                          Label
-                                        </span>
-                                        <input
-                                          name="label"
-                                          defaultValue={bed.label}
-                                          className={`${fieldClass} w-36`}
-                                        />
-                                      </label>
-                                      <label className="text-sm">
-                                        <span className="text-xs font-medium text-muted-foreground">
-                                          Rate
-                                        </span>
-                                        <input
-                                          name="monthlyRate"
-                                          inputMode="decimal"
-                                          placeholder="No rate"
-                                          defaultValue={
-                                            bed.monthlyRate
-                                              ? String(Number(bed.monthlyRate))
-                                              : ""
-                                          }
-                                          className={`${fieldClass} w-24`}
-                                        />
-                                      </label>
-                                      <label className="text-sm">
-                                        <span className="text-xs font-medium text-muted-foreground">
-                                          Billing
-                                        </span>
-                                        <select
-                                          name="ratePeriod"
-                                          defaultValue={bed.ratePeriod}
-                                          className={`${fieldClass} w-36`}
-                                        >
-                                          {periodOptions.map((o) => (
-                                            <option key={o.value} value={o.value}>
-                                              {o.label}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <button
-                                        type="submit"
-                                        className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                                  {canEdit && (
+                                    <details className="border-t border-border">
+                                      <summary className="cursor-pointer list-none px-3 py-1.5 text-xs font-medium text-primary marker:content-none">
+                                        Edit
+                                      </summary>
+                                      <form
+                                        action={updateBed}
+                                        className="flex flex-wrap items-end gap-2 px-3 pb-3"
                                       >
-                                        Save
-                                      </button>
-                                    </form>
-                                  </details>
+                                        <input
+                                          type="hidden"
+                                          name="bedId"
+                                          value={bed.id}
+                                        />
+                                        <label className="text-sm">
+                                          <span className="text-xs font-medium text-muted-foreground">
+                                            Label
+                                          </span>
+                                          <input
+                                            name="label"
+                                            defaultValue={bed.label}
+                                            className={`${fieldClass} w-36`}
+                                          />
+                                        </label>
+                                        <label className="text-sm">
+                                          <span className="text-xs font-medium text-muted-foreground">
+                                            Rate
+                                          </span>
+                                          <input
+                                            name="monthlyRate"
+                                            inputMode="decimal"
+                                            placeholder="No rate"
+                                            defaultValue={
+                                              bed.monthlyRate
+                                                ? String(Number(bed.monthlyRate))
+                                                : ""
+                                            }
+                                            className={`${fieldClass} w-24`}
+                                          />
+                                        </label>
+                                        <label className="text-sm">
+                                          <span className="text-xs font-medium text-muted-foreground">
+                                            Billing
+                                          </span>
+                                          <select
+                                            name="ratePeriod"
+                                            defaultValue={bed.ratePeriod}
+                                            className={`${fieldClass} w-36`}
+                                          >
+                                            {periodOptions.map((o) => (
+                                              <option key={o.value} value={o.value}>
+                                                {o.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <button
+                                          type="submit"
+                                          className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                                        >
+                                          Save
+                                        </button>
+                                      </form>
+                                    </details>
+                                  )}
                                 </div>
                               );
                             })}
@@ -477,7 +486,8 @@ export default async function PropertyPage() {
                         )}
 
                         {/* Add bed */}
-                        <details className="mt-3">
+                        {canEdit && (
+                          <details className="mt-3">
                           <summary className="cursor-pointer list-none text-xs font-medium text-primary marker:content-none">
                             + Add bed
                           </summary>
@@ -572,13 +582,15 @@ export default async function PropertyPage() {
                             3-bed room, add one bunk plus one single.
                           </p>
                         </details>
+                        )}
                       </div>
                     );
                   })}
                 </div>
 
                 {/* Add room */}
-                <details className="mt-4">
+                {canEdit && (
+                  <details className="mt-4">
                   <summary className="cursor-pointer list-none text-sm font-medium text-primary marker:content-none">
                     + Add room
                   </summary>
@@ -622,6 +634,7 @@ export default async function PropertyPage() {
                     </button>
                   </form>
                 </details>
+                )}
               </section>
             );
           })}

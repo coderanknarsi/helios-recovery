@@ -188,6 +188,23 @@ export const residentLogs = pgTable("resident_logs", {
     .notNull(),
 });
 
+/** Which houses a staff member / house manager is scoped to. */
+export const houseAssignments = pgTable("house_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  profileId: uuid("profile_id")
+    .notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id")
+    .notNull()
+    .references(() => houses.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export type Organization = typeof organizations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
 export type House = typeof houses.$inferSelect;
@@ -195,3 +212,4 @@ export type Room = typeof rooms.$inferSelect;
 export type Bed = typeof beds.$inferSelect;
 export type Resident = typeof residents.$inferSelect;
 export type ResidentLog = typeof residentLogs.$inferSelect;
+export type HouseAssignment = typeof houseAssignments.$inferSelect;

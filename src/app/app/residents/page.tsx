@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { residents } from "@/db/schema";
-import { getCurrentProfile } from "@/lib/auth";
+import { residents, beds } from "@/db/schema";
+import { getAccess } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Residents" };
 
@@ -25,14 +25,37 @@ const statusStyles: Record<string, string> = {
 };
 
 export default async function ResidentsPage() {
-  const profile = await getCurrentProfile();
-  const orgId = profile.orgId!;
+  const access = await getAccess();
+  const orgId = access.orgId;
 
-  const rows = await db
-    .select()
-    .from(residents)
-    .where(and(eq(residents.orgId, orgId), ne(residents.status, "prospect")))
-    .orderBy(desc(residents.createdAt));
+  let rows: (typeof residents.$inferSelect)[] = [];
+  if (access.isAdmin) {
+    rows = await db
+      .select()
+      .from(residents)
+      .where(and(eq(residents.orgId, orgId), ne(residents.status, "prospect")))
+      .orderBy(desc(residents.createdAt));
+  } else if ((access.houseIds ?? []).length > 0) {
+    // Managers see only residents placed in one of their houses.
+    const scopedBeds = await db
+      .select({ id: beds.id })
+      .from(beds)
+      .where(inArray(beds.houseId, access.houseIds!));
+    const bedIds = scopedBeds.map((b) => b.id);
+    if (bedIds.length > 0) {
+      rows = await db
+        .select()
+        .from(residents)
+        .where(
+          and(
+            eq(residents.orgId, orgId),
+            ne(residents.status, "prospect"),
+            inArray(residents.bedId, bedIds),
+          ),
+        )
+        .orderBy(desc(residents.createdAt));
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl">

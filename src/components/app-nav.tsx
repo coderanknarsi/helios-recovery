@@ -7,6 +7,7 @@ import {
   UserPlus,
   Users,
   Building2,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,21 +17,31 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   exact?: boolean;
+  adminOnly?: boolean;
 };
 
 const items: NavItem[] = [
   { href: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/app/admissions", label: "Admissions", icon: UserPlus },
+  {
+    href: "/app/admissions",
+    label: "Admissions",
+    icon: UserPlus,
+    adminOnly: true,
+  },
   { href: "/app/residents", label: "Residents", icon: Users },
   { href: "/app/property", label: "Property", icon: Building2 },
+  { href: "/app/team", label: "Team", icon: UserCog, adminOnly: true },
 ];
 
 export function AppNav({
   orientation = "vertical",
+  isAdmin = false,
 }: {
   orientation?: "vertical" | "horizontal";
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
+  const visible = items.filter((item) => isAdmin || !item.adminOnly);
 
   return (
     <nav
@@ -40,7 +51,7 @@ export function AppNav({
           : "flex gap-1 overflow-x-auto"
       )}
     >
-      {items.map((item) => {
+      {visible.map((item) => {
         const active = item.exact
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(item.href + "/");

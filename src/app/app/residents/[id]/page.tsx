@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   ArrowLeft,
   BedDouble,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { db } from "@/db";
 import { residents, beds, rooms, houses, residentLogs } from "@/db/schema";
-import { getCurrentProfile } from "@/lib/auth";
+import { getAccess } from "@/lib/access";
 import { AddLogForm } from "./add-log-form";
 import { assignBed, deleteLog, dischargeResident } from "./actions";
 
@@ -79,8 +79,8 @@ export default async function ResidentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const profile = await getCurrentProfile();
-  const orgId = profile.orgId!;
+  const access = await getAccess();
+  const orgId = access.orgId;
 
   const [resident] = await db
     .select()
@@ -89,6 +89,21 @@ export default async function ResidentDetailPage({
     .limit(1);
 
   if (!resident) notFound();
+
+  // Managers may only view residents placed in one of their assigned houses.
+  if (!access.isAdmin) {
+    const allowed = access.houseIds ?? [];
+    let houseId: string | null = null;
+    if (resident.bedId) {
+      const [b] = await db
+        .select({ houseId: beds.houseId })
+        .from(beds)
+        .where(eq(beds.id, resident.bedId))
+        .limit(1);
+      houseId = b?.houseId ?? null;
+    }
+    if (!houseId || !allowed.includes(houseId)) notFound();
+  }
 
   const [currentBed, logs, availableBeds] = await Promise.all([
     resident.bedId
@@ -119,7 +134,15 @@ export default async function ResidentDetailPage({
       .from(beds)
       .innerJoin(rooms, eq(beds.roomId, rooms.id))
       .innerJoin(houses, eq(beds.houseId, houses.id))
-      .where(and(eq(houses.orgId, orgId), eq(beds.status, "available"))),
+      .where(
+        access.isAdmin
+          ? and(eq(houses.orgId, orgId), eq(beds.status, "available"))
+          : and(
+              eq(houses.orgId, orgId),
+              eq(beds.status, "available"),
+              inArray(beds.houseId, access.houseIds ?? []),
+            ),
+      ),
   ]);
 
   const bed = currentBed[0];

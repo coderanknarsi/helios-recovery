@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { houses, rooms, beds } from "@/db/schema";
-import { getCurrentProfile } from "@/lib/auth";
+import { adminOrgId } from "@/lib/access";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -41,12 +41,13 @@ function refresh() {
 }
 
 export async function createHouse(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const name = field(formData, "name");
   if (!name) return;
 
   await db.insert(houses).values({
-    orgId: profile.orgId!,
+    orgId,
     name,
     addressLine1: field(formData, "addressLine1") || null,
     city: field(formData, "city") || null,
@@ -59,11 +60,12 @@ export async function createHouse(formData: FormData) {
 }
 
 export async function createRoom(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const houseId = field(formData, "houseId");
   const name = field(formData, "name");
   if (!houseId || !name) return;
-  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(houseId, orgId))) return;
 
   const floorRaw = field(formData, "floor");
   const floor = floorRaw ? Number.parseInt(floorRaw, 10) : null;
@@ -78,11 +80,12 @@ export async function createRoom(formData: FormData) {
 }
 
 export async function createBeds(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const houseId = field(formData, "houseId");
   const roomId = field(formData, "roomId");
   if (!houseId || !roomId) return;
-  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(houseId, orgId))) return;
 
   const [room] = await db
     .select({ id: rooms.id })
@@ -140,7 +143,8 @@ export async function createBeds(formData: FormData) {
 
 /** Edit a bed's label and/or monthly rate (allowed even while in use). */
 export async function updateBed(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const bedId = field(formData, "bedId");
   if (!bedId) return;
 
@@ -154,7 +158,7 @@ export async function updateBed(formData: FormData) {
     .where(eq(beds.id, bedId))
     .limit(1);
   if (!bed) return;
-  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(bed.houseId, orgId))) return;
 
   const label = field(formData, "label") || bed.label;
   const monthlyRate = parseRate(field(formData, "monthlyRate"));
@@ -169,7 +173,8 @@ export async function updateBed(formData: FormData) {
 
 /** Toggle a bed between available and maintenance (never while in use). */
 export async function setBedStatus(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const bedId = field(formData, "bedId");
   const status = field(formData, "status");
   if (!bedId || (status !== "available" && status !== "maintenance")) return;
@@ -180,7 +185,7 @@ export async function setBedStatus(formData: FormData) {
     .where(eq(beds.id, bedId))
     .limit(1);
   if (!bed) return;
-  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(bed.houseId, orgId))) return;
   if (bed.status === "occupied" || bed.status === "reserved") return;
 
   await db.update(beds).set({ status }).where(eq(beds.id, bedId));
@@ -188,7 +193,8 @@ export async function setBedStatus(formData: FormData) {
 }
 
 export async function deleteBed(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const bedId = field(formData, "bedId");
   if (!bedId) return;
 
@@ -198,7 +204,7 @@ export async function deleteBed(formData: FormData) {
     .where(eq(beds.id, bedId))
     .limit(1);
   if (!bed) return;
-  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(bed.houseId, orgId))) return;
   if (bed.status === "occupied" || bed.status === "reserved") return;
 
   await db.delete(beds).where(eq(beds.id, bedId));
@@ -206,7 +212,8 @@ export async function deleteBed(formData: FormData) {
 }
 
 export async function deleteRoom(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const roomId = field(formData, "roomId");
   if (!roomId) return;
 
@@ -216,7 +223,7 @@ export async function deleteRoom(formData: FormData) {
     .where(eq(rooms.id, roomId))
     .limit(1);
   if (!room) return;
-  if (!(await houseInOrg(room.houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(room.houseId, orgId))) return;
 
   // Block deletion while any bed in the room is occupied or reserved.
   const busy = await db
@@ -231,10 +238,11 @@ export async function deleteRoom(formData: FormData) {
 }
 
 export async function deleteHouse(formData: FormData) {
-  const profile = await getCurrentProfile();
+  const orgId = await adminOrgId();
+  if (!orgId) return;
   const houseId = field(formData, "houseId");
   if (!houseId) return;
-  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+  if (!(await houseInOrg(houseId, orgId))) return;
 
   const busy = await db
     .select({ id: beds.id, status: beds.status })

@@ -3,7 +3,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { Phone, Mail, CalendarClock } from "lucide-react";
 import { db } from "@/db";
 import { residents, beds, rooms, houses } from "@/db/schema";
-import { getCurrentProfile } from "@/lib/auth";
+import { requireAdmin } from "@/lib/access";
 import { acceptProspect, holdBed, rejectProspect } from "./actions";
 
 export const metadata: Metadata = { title: "Admissions" };
@@ -33,8 +33,8 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
 }
 
 export default async function AdmissionsPage() {
-  const profile = await getCurrentProfile();
-  const orgId = profile.orgId!;
+  const access = await requireAdmin();
+  const orgId = access.orgId;
 
   const [prospects, availableBeds] = await Promise.all([
     db

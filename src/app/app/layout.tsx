@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { AppNav } from "@/components/app-nav";
-import { getCurrentProfile } from "@/lib/auth";
+import { getAccess } from "@/lib/access";
 import { signOutAction } from "./actions";
 
 export default async function AppLayout({
@@ -10,7 +10,9 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await getCurrentProfile();
+  const { profile, isAdmin } = await getAccess();
+
+  const roleLabel = profile.role.replace(/_/g, " ");
 
   return (
     <div className="flex min-h-screen bg-surface-muted/30">
@@ -22,7 +24,7 @@ export default async function AppLayout({
           </Link>
         </div>
         <div className="flex-1 px-3 py-4">
-          <AppNav />
+          <AppNav isAdmin={isAdmin} />
         </div>
         <div className="border-t border-border p-3">
           <div className="px-2 pb-2">
@@ -30,7 +32,7 @@ export default async function AppLayout({
               {profile.fullName ?? profile.email}
             </p>
             <p className="text-xs capitalize text-muted-foreground">
-              {profile.role}
+              {roleLabel}
             </p>
           </div>
           <form action={signOutAction}>
@@ -63,7 +65,7 @@ export default async function AppLayout({
               </button>
             </form>
           </div>
-          <AppNav orientation="horizontal" />
+          <AppNav orientation="horizontal" isAdmin={isAdmin} />
         </header>
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
