@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { residents } from "@/db/schema";
@@ -67,7 +68,12 @@ export default async function ResidentsPage() {
               {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-surface-muted/40">
                   <td className="px-5 py-3.5 font-medium">
-                    {r.firstName} {r.lastName}
+                    <Link
+                      href={`/app/residents/${r.id}`}
+                      className="text-foreground transition hover:text-primary"
+                    >
+                      {r.firstName} {r.lastName}
+                    </Link>
                   </td>
                   <td className="px-5 py-3.5">
                     <span

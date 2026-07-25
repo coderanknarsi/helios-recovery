@@ -38,6 +38,22 @@ export const bedStatus = pgEnum("bed_status", [
   "reserved",
 ]);
 
+export const logType = pgEnum("log_type", [
+  "note",
+  "drug_test",
+  "infraction",
+  "pass",
+  "chore",
+  "medication",
+]);
+
+export const drugTestResult = pgEnum("drug_test_result", [
+  "pass",
+  "fail",
+  "refused",
+  "pending",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -141,9 +157,33 @@ export const residents = pgTable("residents", {
     .notNull(),
 });
 
+/** A timeline entry on a resident: note, drug test, infraction, pass, chore, medication. */
+export const residentLogs = pgTable("resident_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  type: logType("type").notNull(),
+  occurredAt: date("occurred_at").notNull(),
+  title: text("title"),
+  detail: text("detail"),
+  // Only meaningful for drug_test entries.
+  result: drugTestResult("result"),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export type Organization = typeof organizations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
 export type House = typeof houses.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Bed = typeof beds.$inferSelect;
 export type Resident = typeof residents.$inferSelect;
+export type ResidentLog = typeof residentLogs.$inferSelect;
