@@ -37,6 +37,20 @@ function money(value: string | null) {
   });
 }
 
+const floorOptions = [
+  { value: "-1", label: "Basement" },
+  { value: "1", label: "1st floor" },
+  { value: "2", label: "2nd floor" },
+  { value: "3", label: "3rd floor" },
+  { value: "4", label: "4th floor" },
+];
+
+function floorLabel(floor: number | null) {
+  if (floor == null) return null;
+  const match = floorOptions.find((o) => o.value === String(floor));
+  return match ? match.label : `Floor ${floor}`;
+}
+
 type Occupant = { firstName: string; lastName: string; status: string };
 
 export default async function PropertyPage() {
@@ -269,7 +283,7 @@ export default async function PropertyPage() {
                             {room.name}
                             {room.floor != null && (
                               <span className="text-xs font-normal text-muted-foreground">
-                                · Floor {room.floor}
+                                · {floorLabel(room.floor)}
                               </span>
                             )}
                           </div>
@@ -459,11 +473,17 @@ export default async function PropertyPage() {
                       <span className="text-xs font-medium text-muted-foreground">
                         Floor
                       </span>
-                      <input
+                      <select
                         name="floor"
-                        type="number"
-                        className={`${fieldClass} w-24`}
-                      />
+                        defaultValue="1"
+                        className={`${fieldClass} w-36`}
+                      >
+                        {floorOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <button
                       type="submit"
