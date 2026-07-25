@@ -7,7 +7,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import {
   createHouse,
   createRoom,
-  createBed,
+  createBeds,
   setBedStatus,
   deleteBed,
   deleteRoom,
@@ -400,7 +400,7 @@ export default async function PropertyPage() {
                             + Add bed
                           </summary>
                           <form
-                            action={createBed}
+                            action={createBeds}
                             className="mt-2 flex flex-wrap items-end gap-2"
                           >
                             <input
@@ -415,13 +415,40 @@ export default async function PropertyPage() {
                             />
                             <label className="text-sm">
                               <span className="text-xs font-medium text-muted-foreground">
-                                Bed label
+                                Bed type
+                              </span>
+                              <select
+                                name="bedType"
+                                defaultValue="single"
+                                className={`${fieldClass} w-40`}
+                              >
+                                <option value="single">Single bed</option>
+                                <option value="bunk">
+                                  Bunk bed (2 beds)
+                                </option>
+                              </select>
+                            </label>
+                            <label className="text-sm">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                How many
+                              </span>
+                              <input
+                                name="quantity"
+                                type="number"
+                                min={1}
+                                max={20}
+                                defaultValue={1}
+                                className={`${fieldClass} w-20`}
+                              />
+                            </label>
+                            <label className="text-sm">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Label (optional)
                               </span>
                               <input
                                 name="label"
-                                required
-                                placeholder="e.g. Bed A"
-                                className={`${fieldClass} w-36`}
+                                placeholder="e.g. Bed A / Manager"
+                                className={`${fieldClass} w-40`}
                               />
                             </label>
                             <label className="text-sm">
@@ -442,6 +469,10 @@ export default async function PropertyPage() {
                               Add
                             </button>
                           </form>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            A bunk counts as 2 beds (top &amp; bottom). For a
+                            3-bed room, add one bunk plus one single.
+                          </p>
                         </details>
                       </div>
                     );

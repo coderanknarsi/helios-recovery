@@ -68,12 +68,11 @@ export async function createRoom(formData: FormData) {
   refresh();
 }
 
-export async function createBed(formData: FormData) {
+export async function createBeds(formData: FormData) {
   const profile = await getCurrentProfile();
   const houseId = field(formData, "houseId");
   const roomId = field(formData, "roomId");
-  const label = field(formData, "label");
-  if (!houseId || !roomId || !label) return;
+  if (!houseId || !roomId) return;
   if (!(await houseInOrg(houseId, profile.orgId!))) return;
 
   const [room] = await db
@@ -83,12 +82,47 @@ export async function createBed(formData: FormData) {
     .limit(1);
   if (!room) return;
 
-  await db.insert(beds).values({
-    roomId,
-    houseId,
-    label,
-    monthlyRate: parseRate(field(formData, "monthlyRate")),
-  });
+  const type = field(formData, "bedType") === "bunk" ? "bunk" : "single";
+  const qtyRaw = Number.parseInt(field(formData, "quantity"), 10);
+  const quantity = Number.isFinite(qtyRaw)
+    ? Math.min(Math.max(qtyRaw, 1), 20)
+    : 1;
+  const base = field(formData, "label");
+  const rate = parseRate(field(formData, "monthlyRate"));
+
+  // Number new single beds after any that already exist in the room.
+  const existing = await db
+    .select({ id: beds.id })
+    .from(beds)
+    .where(eq(beds.roomId, roomId));
+  let n = existing.length;
+
+  const rows: {
+    roomId: string;
+    houseId: string;
+    label: string;
+    monthlyRate: string | null;
+  }[] = [];
+
+  if (type === "bunk") {
+    // Each bunk creates two beds (top + bottom).
+    for (let i = 0; i < quantity; i++) {
+      const label =
+        quantity > 1 ? `${base || "Bunk"} ${i + 1}` : base || "Bunk";
+      rows.push(
+        { roomId, houseId, label: `${label} (top)`, monthlyRate: rate },
+        { roomId, houseId, label: `${label} (bottom)`, monthlyRate: rate },
+      );
+    }
+  } else {
+    for (let i = 0; i < quantity; i++) {
+      n += 1;
+      const label = quantity === 1 && base ? base : `${base || "Bed"} ${n}`;
+      rows.push({ roomId, houseId, label, monthlyRate: rate });
+    }
+  }
+
+  if (rows.length) await db.insert(beds).values(rows);
 
   refresh();
 }
