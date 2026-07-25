@@ -1,0 +1,142 @@
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  integer,
+  numeric,
+  date,
+  pgEnum,
+} from "drizzle-orm/pg-core";
+
+/**
+ * Helios Recovery — core operations schema (Phase 2).
+ * org_id is included everywhere now so a future multi-operator SaaS
+ * conversion is a refactor, not a rewrite.
+ */
+
+export const userRole = pgEnum("user_role", [
+  "owner",
+  "director",
+  "house_manager",
+  "staff",
+  "resident",
+]);
+
+export const residentStatus = pgEnum("resident_status", [
+  "prospect",
+  "active",
+  "discharged",
+  "alumni",
+]);
+
+export const bedStatus = pgEnum("bed_status", [
+  "available",
+  "occupied",
+  "maintenance",
+  "reserved",
+]);
+
+export const organizations = pgTable("organizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/** Mirrors an auth.users row; id equals the Supabase auth user id. */
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(),
+  orgId: uuid("org_id").references(() => organizations.id, {
+    onDelete: "set null",
+  }),
+  fullName: text("full_name"),
+  email: text("email"),
+  role: userRole("role").notNull().default("staff"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const houses = pgTable("houses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  state: text("state"),
+  postalCode: text("postal_code"),
+  phone: text("phone"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const rooms = pgTable("rooms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  houseId: uuid("house_id")
+    .notNull()
+    .references(() => houses.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  floor: integer("floor"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const beds = pgTable("beds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  roomId: uuid("room_id")
+    .notNull()
+    .references(() => rooms.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id")
+    .notNull()
+    .references(() => houses.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  status: bedStatus("status").notNull().default("available"),
+  monthlyRate: numeric("monthly_rate", { precision: 10, scale: 2 }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const residents = pgTable("residents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  dateOfBirth: date("date_of_birth"),
+  status: residentStatus("status").notNull().default("prospect"),
+  bedId: uuid("bed_id").references(() => beds.id, { onDelete: "set null" }),
+  admitDate: date("admit_date"),
+  dischargeDate: date("discharge_date"),
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  emergencyContactRelation: text("emergency_contact_relation"),
+  medications: text("medications"),
+  legalHistory: text("legal_history"),
+  fundingSource: text("funding_source"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type Organization = typeof organizations.$inferSelect;
+export type Profile = typeof profiles.$inferSelect;
+export type House = typeof houses.$inferSelect;
+export type Room = typeof rooms.$inferSelect;
+export type Bed = typeof beds.$inferSelect;
+export type Resident = typeof residents.$inferSelect;
