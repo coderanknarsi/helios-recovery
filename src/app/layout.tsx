@@ -16,7 +16,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://helios-recovery.vercel.app"),
+  metadataBase: new URL("https://heliosrecoveryresidences.com"),
   title: {
     default: "Helios Recovery Residences — Structured Sober Living",
     template: "%s · Helios Recovery Residences",

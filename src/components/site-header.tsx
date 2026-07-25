@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ButtonLink } from "@/components/ui/button";
+import { MobileNav } from "@/components/mobile-nav";
 import { mainNav } from "@/lib/site";
 
 export function SiteHeader() {
@@ -27,9 +28,10 @@ export function SiteHeader() {
           <ButtonLink href="/contact" variant="ghost" size="sm" className="hidden sm:inline-flex">
             Contact
           </ButtonLink>
-          <ButtonLink href="/contact" size="sm">
+          <ButtonLink href="/apply" size="sm" className="hidden sm:inline-flex">
             Apply for a Bed
           </ButtonLink>
+          <MobileNav />
         </div>
       </div>
     </header>

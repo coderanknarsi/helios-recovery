@@ -132,7 +132,7 @@ export default function FeaturesPage() {
             to talk through the details.
           </p>
           <div className="mt-8">
-            <ButtonLink href="/contact" size="lg">
+            <ButtonLink href="/apply" size="lg">
               Apply for a Bed
             </ButtonLink>
           </div>

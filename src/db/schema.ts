@@ -125,6 +125,12 @@ export const residents = pgTable("residents", {
   medications: text("medications"),
   legalHistory: text("legal_history"),
   fundingSource: text("funding_source"),
+  // Intake / application fields (captured from the public apply form).
+  sobrietyDate: date("sobriety_date"),
+  desiredMoveInDate: date("desired_move_in_date"),
+  referralSource: text("referral_source"),
+  substances: text("substances"),
+  treatmentHistory: text("treatment_history"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

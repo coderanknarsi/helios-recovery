@@ -76,7 +76,7 @@ export default function HomePage() {
               time.
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <ButtonLink href="/contact" size="lg">
+              <ButtonLink href="/apply" size="lg">
                 Apply for a Bed
                 <ArrowRight className="h-4 w-4" />
               </ButtonLink>
@@ -180,7 +180,7 @@ export default function HomePage() {
             a bed that fits.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <ButtonLink href="/contact" size="lg">
+            <ButtonLink href="/apply" size="lg">
               Apply for a Bed
             </ButtonLink>
             <Link

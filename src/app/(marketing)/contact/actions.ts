@@ -48,6 +48,12 @@ export async function submitContact(
 
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.CONTACT_INBOX;
+  // Once heliosrecoveryresidences.com is verified in Resend, set EMAIL_FROM to
+  // e.g. "Helios Recovery Residences <admissions@heliosrecoveryresidences.com>".
+  // Until then we fall back to Resend's shared onboarding sender.
+  const from =
+    process.env.EMAIL_FROM ??
+    "Helios Recovery Residences <onboarding@resend.dev>";
 
   if (apiKey && to) {
     try {
@@ -58,7 +64,7 @@ export async function submitContact(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Helios Website <onboarding@resend.dev>",
+          from,
           to: [to],
           reply_to: email,
           subject: `New inquiry from ${name} (${interest})`,
