@@ -38,6 +38,13 @@ export const bedStatus = pgEnum("bed_status", [
   "reserved",
 ]);
 
+export const ratePeriod = pgEnum("rate_period", [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+]);
+
 export const logType = pgEnum("log_type", [
   "note",
   "drug_test",
@@ -117,6 +124,7 @@ export const beds = pgTable("beds", {
   label: text("label").notNull(),
   status: bedStatus("status").notNull().default("available"),
   monthlyRate: numeric("monthly_rate", { precision: 10, scale: 2 }),
+  ratePeriod: ratePeriod("rate_period").notNull().default("monthly"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

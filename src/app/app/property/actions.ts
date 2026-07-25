@@ -16,6 +16,15 @@ function parseRate(raw: string): string | null {
   return /^\d+(\.\d{1,2})?$/.test(raw) ? raw : null;
 }
 
+const PERIODS = ["daily", "weekly", "biweekly", "monthly"] as const;
+type Period = (typeof PERIODS)[number];
+
+function parsePeriod(raw: string, fallback: Period): Period {
+  return (PERIODS as readonly string[]).includes(raw)
+    ? (raw as Period)
+    : fallback;
+}
+
 /** True when the house exists and belongs to the current org. */
 async function houseInOrg(houseId: string, orgId: string) {
   const [row] = await db
@@ -89,6 +98,7 @@ export async function createBeds(formData: FormData) {
     : 1;
   const base = field(formData, "label");
   const rate = parseRate(field(formData, "monthlyRate"));
+  const ratePeriod = parsePeriod(field(formData, "ratePeriod"), "weekly");
 
   // Number new single beds after any that already exist in the room.
   const existing = await db
@@ -122,7 +132,8 @@ export async function createBeds(formData: FormData) {
     }
   }
 
-  if (rows.length) await db.insert(beds).values(rows);
+  if (rows.length)
+    await db.insert(beds).values(rows.map((r) => ({ ...r, ratePeriod })));
 
   refresh();
 }
@@ -134,7 +145,11 @@ export async function updateBed(formData: FormData) {
   if (!bedId) return;
 
   const [bed] = await db
-    .select({ houseId: beds.houseId, label: beds.label })
+    .select({
+      houseId: beds.houseId,
+      label: beds.label,
+      ratePeriod: beds.ratePeriod,
+    })
     .from(beds)
     .where(eq(beds.id, bedId))
     .limit(1);
@@ -143,8 +158,12 @@ export async function updateBed(formData: FormData) {
 
   const label = field(formData, "label") || bed.label;
   const monthlyRate = parseRate(field(formData, "monthlyRate"));
+  const ratePeriod = parsePeriod(field(formData, "ratePeriod"), bed.ratePeriod);
 
-  await db.update(beds).set({ label, monthlyRate }).where(eq(beds.id, bedId));
+  await db
+    .update(beds)
+    .set({ label, monthlyRate, ratePeriod })
+    .where(eq(beds.id, bedId));
   refresh();
 }
 

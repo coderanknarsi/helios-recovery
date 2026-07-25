@@ -52,6 +52,20 @@ function floorLabel(floor: number | null) {
   return match ? match.label : `Floor ${floor}`;
 }
 
+const periodOptions = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Every 2 weeks" },
+  { value: "monthly", label: "Monthly" },
+];
+
+const periodAbbrev: Record<string, string> = {
+  daily: "day",
+  weekly: "wk",
+  biweekly: "2wk",
+  monthly: "mo",
+};
+
 type Occupant = { firstName: string; lastName: string; status: string };
 
 export default async function PropertyPage() {
@@ -344,7 +358,7 @@ export default async function PropertyPage() {
                                                 : ""
                                             }`
                                           : rate
-                                            ? `${rate}/mo`
+                                            ? `${rate}/${periodAbbrev[bed.ratePeriod] ?? "mo"}`
                                             : "Unassigned"}
                                       </div>
                                     </div>
@@ -418,7 +432,7 @@ export default async function PropertyPage() {
                                       </label>
                                       <label className="text-sm">
                                         <span className="text-xs font-medium text-muted-foreground">
-                                          Monthly rate
+                                          Rate
                                         </span>
                                         <input
                                           name="monthlyRate"
@@ -429,8 +443,24 @@ export default async function PropertyPage() {
                                               ? String(Number(bed.monthlyRate))
                                               : ""
                                           }
-                                          className={`${fieldClass} w-28`}
+                                          className={`${fieldClass} w-24`}
                                         />
+                                      </label>
+                                      <label className="text-sm">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                          Billing
+                                        </span>
+                                        <select
+                                          name="ratePeriod"
+                                          defaultValue={bed.ratePeriod}
+                                          className={`${fieldClass} w-36`}
+                                        >
+                                          {periodOptions.map((o) => (
+                                            <option key={o.value} value={o.value}>
+                                              {o.label}
+                                            </option>
+                                          ))}
+                                        </select>
                                       </label>
                                       <button
                                         type="submit"
@@ -505,14 +535,30 @@ export default async function PropertyPage() {
                             </label>
                             <label className="text-sm">
                               <span className="text-xs font-medium text-muted-foreground">
-                                Monthly rate
+                                Rate
                               </span>
                               <input
                                 name="monthlyRate"
                                 inputMode="decimal"
-                                placeholder="1200"
-                                className={`${fieldClass} w-28`}
+                                placeholder="200"
+                                className={`${fieldClass} w-24`}
                               />
+                            </label>
+                            <label className="text-sm">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Billing
+                              </span>
+                              <select
+                                name="ratePeriod"
+                                defaultValue="weekly"
+                                className={`${fieldClass} w-36`}
+                              >
+                                {periodOptions.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
                             </label>
                             <button
                               type="submit"
