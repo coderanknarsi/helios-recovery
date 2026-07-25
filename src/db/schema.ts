@@ -28,6 +28,7 @@ export const residentStatus = pgEnum("resident_status", [
   "active",
   "discharged",
   "alumni",
+  "rejected",
 ]);
 
 export const bedStatus = pgEnum("bed_status", [
