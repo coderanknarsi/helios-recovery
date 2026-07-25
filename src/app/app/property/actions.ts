@@ -1,0 +1,174 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { houses, rooms, beds } from "@/db/schema";
+import { getCurrentProfile } from "@/lib/auth";
+
+function field(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseRate(raw: string): string | null {
+  if (!raw) return null;
+  return /^\d+(\.\d{1,2})?$/.test(raw) ? raw : null;
+}
+
+/** True when the house exists and belongs to the current org. */
+async function houseInOrg(houseId: string, orgId: string) {
+  const [row] = await db
+    .select({ id: houses.id })
+    .from(houses)
+    .where(and(eq(houses.id, houseId), eq(houses.orgId, orgId)))
+    .limit(1);
+  return Boolean(row);
+}
+
+function refresh() {
+  revalidatePath("/app/property");
+  revalidatePath("/app");
+}
+
+export async function createHouse(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const name = field(formData, "name");
+  if (!name) return;
+
+  await db.insert(houses).values({
+    orgId: profile.orgId!,
+    name,
+    addressLine1: field(formData, "addressLine1") || null,
+    city: field(formData, "city") || null,
+    state: field(formData, "state") || null,
+    postalCode: field(formData, "postalCode") || null,
+    phone: field(formData, "phone") || null,
+  });
+
+  refresh();
+}
+
+export async function createRoom(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const houseId = field(formData, "houseId");
+  const name = field(formData, "name");
+  if (!houseId || !name) return;
+  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+
+  const floorRaw = field(formData, "floor");
+  const floor = floorRaw ? Number.parseInt(floorRaw, 10) : null;
+
+  await db.insert(rooms).values({
+    houseId,
+    name,
+    floor: floor !== null && Number.isFinite(floor) ? floor : null,
+  });
+
+  refresh();
+}
+
+export async function createBed(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const houseId = field(formData, "houseId");
+  const roomId = field(formData, "roomId");
+  const label = field(formData, "label");
+  if (!houseId || !roomId || !label) return;
+  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+
+  const [room] = await db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(and(eq(rooms.id, roomId), eq(rooms.houseId, houseId)))
+    .limit(1);
+  if (!room) return;
+
+  await db.insert(beds).values({
+    roomId,
+    houseId,
+    label,
+    monthlyRate: parseRate(field(formData, "monthlyRate")),
+  });
+
+  refresh();
+}
+
+/** Toggle a bed between available and maintenance (never while in use). */
+export async function setBedStatus(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const bedId = field(formData, "bedId");
+  const status = field(formData, "status");
+  if (!bedId || (status !== "available" && status !== "maintenance")) return;
+
+  const [bed] = await db
+    .select({ houseId: beds.houseId, status: beds.status })
+    .from(beds)
+    .where(eq(beds.id, bedId))
+    .limit(1);
+  if (!bed) return;
+  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+  if (bed.status === "occupied" || bed.status === "reserved") return;
+
+  await db.update(beds).set({ status }).where(eq(beds.id, bedId));
+  refresh();
+}
+
+export async function deleteBed(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const bedId = field(formData, "bedId");
+  if (!bedId) return;
+
+  const [bed] = await db
+    .select({ houseId: beds.houseId, status: beds.status })
+    .from(beds)
+    .where(eq(beds.id, bedId))
+    .limit(1);
+  if (!bed) return;
+  if (!(await houseInOrg(bed.houseId, profile.orgId!))) return;
+  if (bed.status === "occupied" || bed.status === "reserved") return;
+
+  await db.delete(beds).where(eq(beds.id, bedId));
+  refresh();
+}
+
+export async function deleteRoom(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const roomId = field(formData, "roomId");
+  if (!roomId) return;
+
+  const [room] = await db
+    .select({ houseId: rooms.houseId })
+    .from(rooms)
+    .where(eq(rooms.id, roomId))
+    .limit(1);
+  if (!room) return;
+  if (!(await houseInOrg(room.houseId, profile.orgId!))) return;
+
+  // Block deletion while any bed in the room is occupied or reserved.
+  const busy = await db
+    .select({ status: beds.status })
+    .from(beds)
+    .where(eq(beds.roomId, roomId));
+  if (busy.some((b) => b.status === "occupied" || b.status === "reserved"))
+    return;
+
+  await db.delete(rooms).where(eq(rooms.id, roomId));
+  refresh();
+}
+
+export async function deleteHouse(formData: FormData) {
+  const profile = await getCurrentProfile();
+  const houseId = field(formData, "houseId");
+  if (!houseId) return;
+  if (!(await houseInOrg(houseId, profile.orgId!))) return;
+
+  const busy = await db
+    .select({ id: beds.id, status: beds.status })
+    .from(beds)
+    .where(eq(beds.houseId, houseId));
+  if (busy.some((b) => b.status === "occupied" || b.status === "reserved"))
+    return;
+
+  await db.delete(houses).where(eq(houses.id, houseId));
+  refresh();
+}
