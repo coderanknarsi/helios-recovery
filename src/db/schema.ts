@@ -155,6 +155,9 @@ export const residents = pgTable("residents", {
   bedId: uuid("bed_id").references(() => beds.id, { onDelete: "set null" }),
   admitDate: date("admit_date"),
   dischargeDate: date("discharge_date"),
+  // Optional, editable estimate of when an active resident expects to move out.
+  // Never required — sober-living stays are open-ended.
+  expectedDepartureDate: date("expected_departure_date"),
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
   emergencyContactRelation: text("emergency_contact_relation"),

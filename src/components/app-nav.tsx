@@ -7,6 +7,7 @@ import {
   UserPlus,
   Users,
   Building2,
+  CalendarRange,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const items: NavItem[] = [
     adminOnly: true,
   },
   { href: "/app/residents", label: "Residents", icon: Users },
+  { href: "/app/availability", label: "Availability", icon: CalendarRange },
   { href: "/app/property", label: "Property", icon: Building2 },
   { href: "/app/team", label: "Team", icon: UserCog, adminOnly: true },
 ];

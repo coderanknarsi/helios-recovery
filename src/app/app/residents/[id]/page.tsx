@@ -25,7 +25,7 @@ import {
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { AddLogForm } from "./add-log-form";
-import { assignBed, deleteLog, dischargeResident } from "./actions";
+import { assignBed, deleteLog, dischargeResident, setExpectedDeparture } from "./actions";
 import {
   generateIntakePacket,
   resetIntakePacket,
@@ -296,6 +296,39 @@ export default async function ResidentDetailPage({
             </form>
           )}
         </div>
+
+        {isActive && (
+          <form
+            action={setExpectedDeparture}
+            className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4"
+          >
+            <input type="hidden" name="residentId" value={resident.id} />
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                Expected move-out (optional)
+              </span>
+              <input
+                type="date"
+                name="expectedDepartureDate"
+                defaultValue={
+                  typeof resident.expectedDepartureDate === "string"
+                    ? resident.expectedDepartureDate
+                    : ""
+                }
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
+              />
+            </label>
+            <button
+              type="submit"
+              className="inline-flex h-10 items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              Save
+            </button>
+            <span className="text-xs text-muted-foreground">
+              Just an estimate for planning — leave blank for open-ended stays.
+            </span>
+          </form>
+        )}
       </div>
 
       {/* Profile details */}

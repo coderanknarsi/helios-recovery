@@ -153,7 +153,6 @@ export async function dischargeResident(formData: FormData) {
 
   const resident = await scopedResident(residentId, access);
   if (!resident) return;
-
   if (resident.bedId) {
     await db
       .update(beds)
@@ -172,4 +171,25 @@ export async function dischargeResident(formData: FormData) {
     .where(eq(residents.id, residentId));
 
   refresh(residentId);
+}
+
+/** Set or clear the optional expected move-out estimate for a resident. */
+export async function setExpectedDeparture(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return;
+
+  const resident = await scopedResident(residentId, access);
+  if (!resident) return;
+
+  const raw = field(formData, "expectedDepartureDate");
+  const value = raw.length ? raw : null;
+
+  await db
+    .update(residents)
+    .set({ expectedDepartureDate: value, updatedAt: new Date() })
+    .where(eq(residents.id, residentId));
+
+  refresh(residentId);
+  revalidatePath("/app/availability");
 }
