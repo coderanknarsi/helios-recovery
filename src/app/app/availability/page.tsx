@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import {
@@ -166,6 +167,14 @@ export default async function AvailabilityPage() {
   }
   const houseGroups = [...byHouse.values()];
 
+  // Near-term horizon for the day-by-day strip (today + next 13 days).
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
   const stats = [
     { label: "Total beds", value: total, accent: "text-foreground bg-surface-muted" },
     { label: "Open now", value: openNow, accent: "text-accent bg-accent/10" },
@@ -211,6 +220,9 @@ export default async function AvailabilityPage() {
               </div>
             ))}
           </div>
+
+          {/* 14-day strip */}
+          <DayStrip houseGroups={houseGroups} days={days} />
 
           {/* Forecast */}
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
@@ -349,6 +361,156 @@ export default async function AvailabilityPage() {
         </>
       )}
     </div>
+  );
+}
+
+function dayKey(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${da}`;
+}
+
+type DayState = "open" | "occupied" | "reserved" | "maintenance";
+
+/** What a bed looks like on a given calendar day within the horizon. */
+function cellDayStatus(cell: Cell, key: string): DayState {
+  if (cell.status === "maintenance") return "maintenance";
+  if (cell.status === "reserved") return "reserved";
+  if (cell.status === "occupied") {
+    // Frees up on/after the expected move-out estimate (if one is set).
+    if (cell.expectedDepartureDate && key >= cell.expectedDepartureDate) {
+      return "open";
+    }
+    return "occupied";
+  }
+  return "open";
+}
+
+const DAY_STYLES: Record<DayState, string> = {
+  open: "bg-accent/20",
+  occupied: "bg-surface-muted",
+  reserved: "bg-primary/25",
+  maintenance:
+    "bg-[repeating-linear-gradient(45deg,var(--border),var(--border)_3px,transparent_3px,transparent_6px)]",
+};
+
+const DAY_LABELS: Record<DayState, string> = {
+  open: "Open",
+  occupied: "Occupied",
+  reserved: "Reserved",
+  maintenance: "Out of service",
+};
+
+function DayStrip({
+  houseGroups,
+  days,
+}: {
+  houseGroups: { name: string; cells: Cell[] }[];
+  days: Date[];
+}) {
+  const todayKey = dayKey(days[0]);
+
+  return (
+    <section className="mt-8 rounded-xl border border-border bg-surface p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Next 14 days</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Bed-by-day view so you can see if there&apos;s room for an intake on
+            a specific date.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          {(["open", "occupied", "reserved", "maintenance"] as DayState[]).map(
+            (s) => (
+              <span key={s} className="inline-flex items-center gap-1.5">
+                <span
+                  className={`inline-block h-3 w-3 rounded-sm border border-border ${DAY_STYLES[s]}`}
+                />
+                {DAY_LABELS[s]}
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full border-separate border-spacing-0 text-xs">
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-surface pb-2 pr-3 text-left font-medium text-muted-foreground">
+                Bed
+              </th>
+              {days.map((d) => {
+                const key = dayKey(d);
+                const isToday = key === todayKey;
+                const weekend = d.getDay() === 0 || d.getDay() === 6;
+                return (
+                  <th
+                    key={key}
+                    className={`px-0 pb-2 text-center font-medium ${
+                      weekend
+                        ? "text-muted-foreground/60"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <div
+                      className={`mx-auto flex w-8 flex-col items-center rounded-md py-0.5 ${
+                        isToday ? "bg-primary/10 text-primary" : ""
+                      }`}
+                    >
+                      <span className="text-[10px] uppercase">
+                        {d.toLocaleDateString("en-US", { weekday: "narrow" })}
+                      </span>
+                      <span className="text-sm font-semibold">
+                        {d.getDate()}
+                      </span>
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {houseGroups.map((group) => (
+              <Fragment key={group.name}>
+                <tr>
+                  <td
+                    colSpan={days.length + 1}
+                    className="sticky left-0 bg-surface pb-1 pt-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {group.name}
+                  </td>
+                </tr>
+                {group.cells.map((cell) => (
+                  <tr key={cell.bedId}>
+                    <td className="sticky left-0 z-10 whitespace-nowrap bg-surface py-1 pr-3 text-foreground">
+                      {cell.roomName} · {cell.bedLabel}
+                    </td>
+                    {days.map((d) => {
+                      const key = dayKey(d);
+                      const state = cellDayStatus(cell, key);
+                      return (
+                        <td key={key} className="p-0.5">
+                          <div
+                            title={`${cell.bedLabel} · ${d.toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric" },
+                            )}: ${DAY_LABELS[state]}`}
+                            className={`mx-auto h-6 w-8 rounded-sm border border-border ${DAY_STYLES[state]}`}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
