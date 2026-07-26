@@ -79,8 +79,20 @@ export function ApplicationForm() {
   const back = () => setStep((s) => Math.max(s - 1, 0));
   const isLast = step === steps.length - 1;
 
+  // Only allow the form to actually submit from the final step. This guards
+  // against accidental submits (e.g. pressing Enter on an earlier step).
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (!isLast) e.preventDefault();
+  };
+
   return (
-    <form ref={formRef} action={formAction} className="space-y-8" noValidate>
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={handleSubmit}
+      className="space-y-8"
+      noValidate
+    >
       {/* Honeypot */}
       <input
         type="text"
@@ -312,11 +324,11 @@ export function ApplicationForm() {
         </Button>
 
         {isLast ? (
-          <Button type="submit" size="lg" disabled={pending}>
+          <Button key="submit" type="submit" size="lg" disabled={pending}>
             {pending ? "Submitting…" : "Submit application"}
           </Button>
         ) : (
-          <Button type="button" size="lg" onClick={next}>
+          <Button key="continue" type="button" size="lg" onClick={next}>
             Continue
           </Button>
         )}
