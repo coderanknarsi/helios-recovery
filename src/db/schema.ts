@@ -170,6 +170,10 @@ export const residents = pgTable("residents", {
   notes: text("notes"),
   // When set, the prospect is on the waitlist (FIFO by this timestamp).
   waitlistedAt: timestamp("waitlisted_at", { withTimezone: true }),
+  // Last time we emailed this waitlisted prospect that a spot may be opening.
+  waitlistNotifiedAt: timestamp("waitlist_notified_at", {
+    withTimezone: true,
+  }),
   // Secure token for the resident's public document-signing link.
   signToken: text("sign_token"),
   signTokenExpiresAt: timestamp("sign_token_expires_at", {

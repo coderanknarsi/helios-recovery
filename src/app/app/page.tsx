@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { UserPlus, Users, Building2, BedDouble, ArrowRight } from "lucide-react";
+import { UserPlus, Users, Building2, BedDouble, ArrowRight, ListOrdered } from "lucide-react";
 import { db } from "@/db";
 import { residents, houses, beds } from "@/db/schema";
 import { getAccess } from "@/lib/access";
@@ -28,7 +28,10 @@ export default async function OverviewPage() {
     // Incoming applications — admins only.
     isAdmin
       ? db
-          .select({ id: residents.id })
+          .select({
+            id: residents.id,
+            waitlistedAt: residents.waitlistedAt,
+          })
           .from(residents)
           .where(
             and(eq(residents.orgId, orgId), eq(residents.status, "prospect")),
@@ -96,13 +99,23 @@ export default async function OverviewPage() {
       : Promise.resolve([]),
   ]);
 
+  const newApplicationsCount = prospects.filter((p) => !p.waitlistedAt).length;
+  const waitlistCount = prospects.filter((p) => p.waitlistedAt).length;
+
   const stats = [
     ...(isAdmin
       ? [
           {
             label: "New applications",
-            value: prospects.length,
+            value: newApplicationsCount,
             icon: UserPlus,
+            href: "/app/admissions",
+            accent: "text-primary bg-primary/10",
+          },
+          {
+            label: "On waitlist",
+            value: waitlistCount,
+            icon: ListOrdered,
             href: "/app/admissions",
             accent: "text-primary bg-primary/10",
           },

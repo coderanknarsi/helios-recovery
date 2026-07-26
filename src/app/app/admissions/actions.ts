@@ -3,11 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { residents, beds } from "@/db/schema";
+import { residents, beds, organizations } from "@/db/schema";
 import { adminOrgId } from "@/lib/access";
+import { siteConfig } from "@/lib/site";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+async function sendEmail(payload: Record<string, unknown>) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("RESEND_API_KEY not set");
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Resend responded ${res.status}`);
 }
 
 /** Convert a prospect into an active resident, optionally assigning a bed. */
@@ -112,4 +127,63 @@ export async function removeFromWaitlist(formData: FormData) {
 
   revalidatePath("/app/admissions");
   revalidatePath("/app");
+}
+
+/** Email a waitlisted prospect that a spot may be opening up. */
+export async function notifyNextInLine(formData: FormData) {
+  const orgId = await adminOrgId();
+  if (!orgId) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const [prospect] = await db
+    .select({
+      email: residents.email,
+      firstName: residents.firstName,
+      waitlistedAt: residents.waitlistedAt,
+    })
+    .from(residents)
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)))
+    .limit(1);
+  if (!prospect?.email || !prospect.waitlistedAt) return;
+
+  const [org] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  const orgName = org?.name ?? siteConfig.name;
+
+  const from =
+    process.env.EMAIL_FROM ??
+    "Helios Recovery Residences <onboarding@resend.dev>";
+
+  try {
+    await sendEmail({
+      from,
+      to: [prospect.email],
+      subject: `A spot may be opening up at ${orgName}`,
+      text: [
+        `Hi ${prospect.firstName},`,
+        "",
+        `Good news — a spot may be opening up at ${orgName}, and you're near the top of our waitlist.`,
+        "",
+        `If you're still interested, please reply to this email or give us a call as soon as you can so we can hold your place.`,
+        "",
+        siteConfig.phone,
+        "",
+        orgName,
+      ].join("\n"),
+    });
+  } catch (err) {
+    console.error("[waitlist] failed to notify prospect", err);
+    return;
+  }
+
+  await db
+    .update(residents)
+    .set({ waitlistNotifiedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+
+  revalidatePath("/app/admissions");
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { Phone, Mail, CalendarClock, ListOrdered, BedDouble } from "lucide-react";
+import { Phone, Mail, CalendarClock, ListOrdered, BedDouble, BellRing } from "lucide-react";
 import { db } from "@/db";
 import { residents, beds, rooms, houses } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
@@ -10,6 +10,7 @@ import {
   rejectProspect,
   addToWaitlist,
   removeFromWaitlist,
+  notifyNextInLine,
 } from "./actions";
 
 export const metadata: Metadata = { title: "Admissions" };
@@ -300,6 +301,12 @@ export default async function AdmissionsPage() {
                           <span className="inline-flex items-center gap-1.5">
                             Added {fmtDate(p.waitlistedAt)}
                           </span>
+                          {p.waitlistNotifiedAt && (
+                            <span className="inline-flex items-center gap-1.5 text-accent">
+                              <BellRing className="h-3.5 w-3.5" />
+                              Notified {fmtDate(p.waitlistNotifiedAt)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -336,6 +343,19 @@ export default async function AdmissionsPage() {
                           Accept &amp; admit
                         </button>
                       </form>
+
+                      {p.email && (
+                        <form action={notifyNextInLine}>
+                          <input type="hidden" name="id" value={p.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary"
+                          >
+                            <BellRing className="h-4 w-4" />
+                            {p.waitlistNotifiedAt ? "Notify again" : "Notify"}
+                          </button>
+                        </form>
+                      )}
 
                       <form action={removeFromWaitlist}>
                         <input type="hidden" name="id" value={p.id} />
