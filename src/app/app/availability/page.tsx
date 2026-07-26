@@ -11,6 +11,8 @@ import {
   Wrench,
   ArrowRight,
   Clock,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { db } from "@/db";
 import { beds, rooms, houses, residents } from "@/db/schema";
@@ -56,6 +58,8 @@ type Cell = {
   houseName: string;
   residentId: string | null;
   residentName: string | null;
+  residentPhone: string | null;
+  residentEmail: string | null;
   admitDate: string | null;
   expectedDepartureDate: string | null;
   desiredMoveInDate: string | null;
@@ -98,6 +102,8 @@ export default async function AvailabilityPage() {
           id: residents.id,
           firstName: residents.firstName,
           lastName: residents.lastName,
+          phone: residents.phone,
+          email: residents.email,
           status: residents.status,
           bedId: residents.bedId,
           admitDate: residents.admitDate,
@@ -129,6 +135,8 @@ export default async function AvailabilityPage() {
       houseName: b.houseName,
       residentId: occ?.id ?? null,
       residentName: occ ? `${occ.firstName} ${occ.lastName}` : null,
+      residentPhone: occ?.phone ?? null,
+      residentEmail: occ?.email ?? null,
       admitDate: occ?.admitDate ?? null,
       expectedDepartureDate: occ?.expectedDepartureDate ?? null,
       desiredMoveInDate: occ?.desiredMoveInDate ?? null,
@@ -574,9 +582,21 @@ function BedCard({ cell }: { cell: Cell }) {
         <p className="mt-2 text-sm font-medium">
           {cell.residentName ?? "Incoming guest"}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Arrives {fmtDate(cell.desiredMoveInDate)}
-        </p>
+        <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+          {cell.residentPhone && (
+            <span className="inline-flex items-center gap-1.5">
+              <Phone className="h-3 w-3 shrink-0" />
+              {cell.residentPhone}
+            </span>
+          )}
+          {cell.residentEmail && (
+            <span className="inline-flex items-center gap-1.5 truncate">
+              <Mail className="h-3 w-3 shrink-0" />
+              {cell.residentEmail}
+            </span>
+          )}
+          <span>Arrives {fmtDate(cell.desiredMoveInDate)}</span>
+        </div>
       </Link>
     );
   }
@@ -596,13 +616,27 @@ function BedCard({ cell }: { cell: Cell }) {
         </span>
       </div>
       <p className="mt-2 text-sm font-medium">{cell.residentName}</p>
-      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-        <span>In {fmtDate(cell.admitDate)}</span>
-        <span>
-          {cell.expectedDepartureDate
-            ? `Out ~${fmtDate(cell.expectedDepartureDate)}`
-            : "Open-ended"}
-        </span>
+      <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+        {cell.residentPhone && (
+          <span className="inline-flex items-center gap-1.5">
+            <Phone className="h-3 w-3 shrink-0" />
+            {cell.residentPhone}
+          </span>
+        )}
+        {cell.residentEmail && (
+          <span className="inline-flex items-center gap-1.5 truncate">
+            <Mail className="h-3 w-3 shrink-0" />
+            {cell.residentEmail}
+          </span>
+        )}
+        <div className="flex flex-wrap gap-x-3">
+          <span>In {fmtDate(cell.admitDate)}</span>
+          <span>
+            {cell.expectedDepartureDate
+              ? `Out ~${fmtDate(cell.expectedDepartureDate)}`
+              : "Open-ended"}
+          </span>
+        </div>
       </div>
     </Link>
   );
