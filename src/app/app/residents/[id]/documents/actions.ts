@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { buildIntakePacket, type DocContext } from "@/lib/intake-templates";
+import { siteConfig } from "@/lib/site";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -225,4 +227,114 @@ export async function resetIntakePacket(formData: FormData) {
     );
 
   revalidatePath(`/app/residents/${residentId}`);
+}
+
+async function sendEmail(payload: Record<string, unknown>) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("RESEND_API_KEY not set");
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Resend responded ${res.status}`);
+}
+
+export type EmailLinkState = {
+  status: "idle" | "sent" | "error";
+  message?: string;
+};
+
+/**
+ * Generate (or refresh) a secure signing token for the resident and email
+ * them a link to review and sign their intake packet remotely.
+ */
+export async function emailSigningLink(
+  _prev: EmailLinkState,
+  formData: FormData,
+): Promise<EmailLinkState> {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return { status: "error", message: "Missing resident." };
+
+  const r = await scopedResidentContext(residentId, access);
+  if (!r) return { status: "error", message: "Not allowed." };
+
+  const [resident] = await db
+    .select({ email: residents.email, firstName: residents.firstName })
+    .from(residents)
+    .where(eq(residents.id, residentId))
+    .limit(1);
+  if (!resident?.email) {
+    return {
+      status: "error",
+      message: "This resident has no email address on file.",
+    };
+  }
+
+  // A packet must exist before we can send it.
+  const docs = await db
+    .select({ id: intakeDocuments.id })
+    .from(intakeDocuments)
+    .where(
+      and(
+        eq(intakeDocuments.residentId, residentId),
+        eq(intakeDocuments.orgId, access.orgId),
+      ),
+    )
+    .limit(1);
+  if (docs.length === 0) {
+    return {
+      status: "error",
+      message: "Generate the intake packet first, then send it.",
+    };
+  }
+
+  const token = randomUUID();
+  const expires = new Date();
+  expires.setDate(expires.getDate() + 30);
+
+  await db
+    .update(residents)
+    .set({ signToken: token, signTokenExpiresAt: expires })
+    .where(eq(residents.id, residentId));
+
+  const link = `${siteConfig.url}/sign/${token}`;
+  const from =
+    process.env.EMAIL_FROM ??
+    "Helios Recovery Residences <onboarding@resend.dev>";
+
+  try {
+    await sendEmail({
+      from,
+      to: [resident.email],
+      subject: `Please review and sign your ${siteConfig.name} documents`,
+      text: [
+        `Hi ${resident.firstName},`,
+        "",
+        `Please review and sign your intake documents before move-in. It only takes a few minutes and can be done from your phone:`,
+        "",
+        link,
+        "",
+        "This secure link expires in 30 days. If you have any questions, just reply to this email.",
+        "",
+        siteConfig.name,
+      ].join("\n"),
+    });
+  } catch (err) {
+    console.error("[intake] failed to send signing link", err);
+    return {
+      status: "error",
+      message: "Couldn't send the email. Please try again.",
+    };
+  }
+
+  revalidatePath(`/app/residents/${residentId}`);
+  return {
+    status: "sent",
+    message: `Signing link sent to ${resident.email}.`,
+  };
 }

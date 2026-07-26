@@ -168,6 +168,11 @@ export const residents = pgTable("residents", {
   substances: text("substances"),
   treatmentHistory: text("treatment_history"),
   notes: text("notes"),
+  // Secure token for the resident's public document-signing link.
+  signToken: text("sign_token"),
+  signTokenExpiresAt: timestamp("sign_token_expires_at", {
+    withTimezone: true,
+  }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

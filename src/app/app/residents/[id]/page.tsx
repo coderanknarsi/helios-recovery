@@ -23,12 +23,14 @@ import {
   intakeDocuments,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
+import { siteConfig } from "@/lib/site";
 import { AddLogForm } from "./add-log-form";
 import { assignBed, deleteLog, dischargeResident } from "./actions";
 import {
   generateIntakePacket,
   resetIntakePacket,
 } from "./documents/actions";
+import { EmailLinkForm } from "./documents/email-link-form";
 
 export const metadata: Metadata = { title: "Resident" };
 
@@ -177,6 +179,14 @@ export default async function ResidentDetailPage({
     )
     .orderBy(desc(intakeDocuments.createdAt));
   const signedCount = documents.filter((d) => d.status === "signed").length;
+
+  const linkActive =
+    !!resident.signToken &&
+    !!resident.signTokenExpiresAt &&
+    resident.signTokenExpiresAt.getTime() > Date.now();
+  const activeLink = linkActive
+    ? `${siteConfig.url}/sign/${resident.signToken}`
+    : null;
 
   const bed = currentBed[0];
   const isActive = resident.status === "active";
@@ -392,6 +402,11 @@ export default async function ResidentDetailPage({
                 );
               })}
             </ul>
+            <EmailLinkForm
+              residentId={resident.id}
+              hasEmail={!!resident.email}
+              activeLink={activeLink}
+            />
             {access.isAdmin && (
               <form action={resetIntakePacket} className="mt-4">
                 <input type="hidden" name="residentId" value={resident.id} />
