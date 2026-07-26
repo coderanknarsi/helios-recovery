@@ -25,6 +25,7 @@ export async function acceptProspect(formData: FormData) {
       status: "active",
       admitDate: today(),
       bedId,
+      waitlistedAt: null,
       updatedAt: new Date(),
     })
     .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
@@ -68,7 +69,45 @@ export async function rejectProspect(formData: FormData) {
 
   await db
     .update(residents)
-    .set({ status: "rejected", updatedAt: new Date() })
+    .set({ status: "rejected", waitlistedAt: null, updatedAt: new Date() })
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+
+  revalidatePath("/app/admissions");
+  revalidatePath("/app");
+}
+
+/** Move a prospect onto the waitlist (kept in FIFO order by waitlistedAt). */
+export async function addToWaitlist(formData: FormData) {
+  const orgId = await adminOrgId();
+  if (!orgId) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  await db
+    .update(residents)
+    .set({ waitlistedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(residents.id, id),
+        eq(residents.orgId, orgId),
+        eq(residents.status, "prospect"),
+      ),
+    );
+
+  revalidatePath("/app/admissions");
+  revalidatePath("/app");
+}
+
+/** Take a prospect back off the waitlist (returns to new-applications review). */
+export async function removeFromWaitlist(formData: FormData) {
+  const orgId = await adminOrgId();
+  if (!orgId) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  await db
+    .update(residents)
+    .set({ waitlistedAt: null, updatedAt: new Date() })
     .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
 
   revalidatePath("/app/admissions");

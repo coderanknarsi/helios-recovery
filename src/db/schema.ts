@@ -168,6 +168,8 @@ export const residents = pgTable("residents", {
   substances: text("substances"),
   treatmentHistory: text("treatment_history"),
   notes: text("notes"),
+  // When set, the prospect is on the waitlist (FIFO by this timestamp).
+  waitlistedAt: timestamp("waitlisted_at", { withTimezone: true }),
   // Secure token for the resident's public document-signing link.
   signToken: text("sign_token"),
   signTokenExpiresAt: timestamp("sign_token_expires_at", {
