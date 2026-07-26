@@ -16,6 +16,7 @@ import {
 import { getAccess, type Access } from "@/lib/access";
 import { buildIntakePacket, type DocContext } from "@/lib/intake-templates";
 import { siteConfig } from "@/lib/site";
+import { sendSms } from "@/lib/sms";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -249,29 +250,42 @@ export type EmailLinkState = {
 };
 
 /**
- * Generate (or refresh) a secure signing token for the resident and email
- * them a link to review and sign their intake packet remotely.
+ * Generate (or refresh) a secure signing token for the resident and send them
+ * a link to review and sign their intake packet remotely. Channel is "email"
+ * (default) or "text".
  */
-export async function emailSigningLink(
+export async function sendSigningLink(
   _prev: EmailLinkState,
   formData: FormData,
 ): Promise<EmailLinkState> {
   const access = await getAccess();
   const residentId = field(formData, "residentId");
   if (!residentId) return { status: "error", message: "Missing resident." };
+  const channel = field(formData, "channel") === "text" ? "text" : "email";
 
   const r = await scopedResidentContext(residentId, access);
   if (!r) return { status: "error", message: "Not allowed." };
 
   const [resident] = await db
-    .select({ email: residents.email, firstName: residents.firstName })
+    .select({
+      email: residents.email,
+      phone: residents.phone,
+      firstName: residents.firstName,
+    })
     .from(residents)
     .where(eq(residents.id, residentId))
     .limit(1);
-  if (!resident?.email) {
+
+  if (channel === "email" && !resident?.email) {
     return {
       status: "error",
       message: "This resident has no email address on file.",
+    };
+  }
+  if (channel === "text" && !resident?.phone) {
+    return {
+      status: "error",
+      message: "This resident has no phone number on file.",
     };
   }
 
@@ -303,38 +317,48 @@ export async function emailSigningLink(
     .where(eq(residents.id, residentId));
 
   const link = `${siteConfig.url}/sign/${token}`;
-  const from =
-    process.env.EMAIL_FROM ??
-    "Helios Recovery Residences <onboarding@resend.dev>";
 
   try {
-    await sendEmail({
-      from,
-      to: [resident.email],
-      subject: `Please review and sign your ${siteConfig.name} documents`,
-      text: [
-        `Hi ${resident.firstName},`,
-        "",
-        `Please review and sign your intake documents before move-in. It only takes a few minutes and can be done from your phone:`,
-        "",
-        link,
-        "",
-        "This secure link expires in 30 days. If you have any questions, just reply to this email.",
-        "",
-        siteConfig.name,
-      ].join("\n"),
-    });
+    if (channel === "text") {
+      await sendSms({
+        to: resident!.phone!,
+        text: `Hi ${resident!.firstName}, please review & sign your ${siteConfig.name} intake documents here (link expires in 30 days): ${link}`,
+      });
+    } else {
+      const from =
+        process.env.EMAIL_FROM ??
+        "Helios Recovery Residences <onboarding@resend.dev>";
+      await sendEmail({
+        from,
+        to: [resident!.email!],
+        subject: `Please review and sign your ${siteConfig.name} documents`,
+        text: [
+          `Hi ${resident!.firstName},`,
+          "",
+          `Please review and sign your intake documents before move-in. It only takes a few minutes and can be done from your phone:`,
+          "",
+          link,
+          "",
+          "This secure link expires in 30 days. If you have any questions, just reply to this email.",
+          "",
+          siteConfig.name,
+        ].join("\n"),
+      });
+    }
   } catch (err) {
     console.error("[intake] failed to send signing link", err);
     return {
       status: "error",
-      message: "Couldn't send the email. Please try again.",
+      message: `Couldn't send the ${channel === "text" ? "text" : "email"}. Please try again.`,
     };
   }
 
   revalidatePath(`/app/residents/${residentId}`);
   return {
     status: "sent",
-    message: `Signing link sent to ${resident.email}.`,
+    message:
+      channel === "text"
+        ? `Signing link texted to ${resident!.phone}.`
+        : `Signing link emailed to ${resident!.email}.`,
   };
 }

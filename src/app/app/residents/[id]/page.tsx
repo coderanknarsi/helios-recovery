@@ -438,6 +438,7 @@ export default async function ResidentDetailPage({
             <EmailLinkForm
               residentId={resident.id}
               hasEmail={!!resident.email}
+              hasPhone={!!resident.phone}
               activeLink={activeLink}
             />
             {access.isAdmin && (

@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { residents, beds, organizations } from "@/db/schema";
 import { adminOrgId } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
+import { sendSms } from "@/lib/sms";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -177,6 +178,49 @@ export async function notifyNextInLine(formData: FormData) {
     });
   } catch (err) {
     console.error("[waitlist] failed to notify prospect", err);
+    return;
+  }
+
+  await db
+    .update(residents)
+    .set({ waitlistNotifiedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+
+  revalidatePath("/app/admissions");
+}
+
+/** Text a waitlisted prospect that a spot may be opening up. */
+export async function textNextInLine(formData: FormData) {
+  const orgId = await adminOrgId();
+  if (!orgId) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const [prospect] = await db
+    .select({
+      phone: residents.phone,
+      firstName: residents.firstName,
+      waitlistedAt: residents.waitlistedAt,
+    })
+    .from(residents)
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)))
+    .limit(1);
+  if (!prospect?.phone || !prospect.waitlistedAt) return;
+
+  const [org] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  const orgName = org?.name ?? siteConfig.name;
+
+  try {
+    await sendSms({
+      to: prospect.phone,
+      text: `Hi ${prospect.firstName}, a spot may be opening up at ${orgName} and you're near the top of our waitlist. If you're still interested, please call us at ${siteConfig.phone} to hold your place.`,
+    });
+  } catch (err) {
+    console.error("[waitlist] failed to text prospect", err);
     return;
   }
 
