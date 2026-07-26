@@ -9,12 +9,26 @@ import {
   Mail,
   Trash2,
   ClipboardList,
+  FileSignature,
+  FileCheck2,
+  ChevronRight,
 } from "lucide-react";
 import { db } from "@/db";
-import { residents, beds, rooms, houses, residentLogs } from "@/db/schema";
+import {
+  residents,
+  beds,
+  rooms,
+  houses,
+  residentLogs,
+  intakeDocuments,
+} from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { AddLogForm } from "./add-log-form";
 import { assignBed, deleteLog, dischargeResident } from "./actions";
+import {
+  generateIntakePacket,
+  resetIntakePacket,
+} from "./documents/actions";
 
 export const metadata: Metadata = { title: "Resident" };
 
@@ -144,6 +158,25 @@ export default async function ResidentDetailPage({
             ),
       ),
   ]);
+
+  const documents = await db
+    .select({
+      id: intakeDocuments.id,
+      type: intakeDocuments.type,
+      title: intakeDocuments.title,
+      status: intakeDocuments.status,
+      signedName: intakeDocuments.signedName,
+      signedAt: intakeDocuments.signedAt,
+    })
+    .from(intakeDocuments)
+    .where(
+      and(
+        eq(intakeDocuments.residentId, id),
+        eq(intakeDocuments.orgId, orgId),
+      ),
+    )
+    .orderBy(desc(intakeDocuments.createdAt));
+  const signedCount = documents.filter((d) => d.status === "signed").length;
 
   const bed = currentBed[0];
   const isActive = resident.status === "active";
@@ -277,6 +310,101 @@ export default async function ResidentDetailPage({
           <Detail label="Emergency contact" value={contactLine || null} />
           <Detail label="Notes" value={resident.notes} />
         </dl>
+      </div>
+
+      {/* Intake documents */}
+      <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <FileSignature className="h-4 w-4 text-muted-foreground" />
+            Intake documents
+          </h2>
+          {documents.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {signedCount} of {documents.length} signed
+            </span>
+          )}
+        </div>
+
+        {documents.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border bg-background p-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              No intake packet yet. Generate a pre-filled Lease, House Rules, and
+              Consent form for {resident.firstName} to review and sign.
+            </p>
+            <form action={generateIntakePacket} className="mt-4">
+              <input type="hidden" name="residentId" value={resident.id} />
+              <button
+                type="submit"
+                className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+              >
+                Generate intake packet
+              </button>
+            </form>
+            <p className="mx-auto mt-3 max-w-md text-xs text-muted-foreground">
+              These are starter templates pre-filled with this resident&apos;s
+              details. Review the wording with your own counsel before relying
+              on them.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ul className="mt-4 space-y-2">
+              {documents.map((d) => {
+                const signed = d.status === "signed";
+                return (
+                  <li key={d.id}>
+                    <Link
+                      href={`/app/residents/${resident.id}/documents/${d.id}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-4 py-3 transition hover:border-primary/40"
+                    >
+                      <span className="flex items-center gap-3">
+                        {signed ? (
+                          <FileCheck2 className="h-4 w-4 text-accent" />
+                        ) : (
+                          <FileSignature className="h-4 w-4 text-primary" />
+                        )}
+                        <span>
+                          <span className="block text-sm font-medium">
+                            {d.title}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {signed
+                              ? `Signed by ${d.signedName} · ${fmtDate(d.signedAt)}`
+                              : "Awaiting signature"}
+                          </span>
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            signed
+                              ? "bg-accent/10 text-accent"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {signed ? "Signed" : "Review & sign"}
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            {access.isAdmin && (
+              <form action={resetIntakePacket} className="mt-4">
+                <input type="hidden" name="residentId" value={resident.id} />
+                <button
+                  type="submit"
+                  className="text-xs font-medium text-muted-foreground transition hover:text-red-600"
+                >
+                  Reset packet (delete &amp; regenerate)
+                </button>
+              </form>
+            )}
+          </>
+        )}
       </div>
 
       {/* Logs */}

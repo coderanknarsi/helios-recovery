@@ -61,6 +61,17 @@ export const drugTestResult = pgEnum("drug_test_result", [
   "pending",
 ]);
 
+export const intakeDocType = pgEnum("intake_doc_type", [
+  "lease_agreement",
+  "house_rules",
+  "consent",
+]);
+
+export const intakeDocStatus = pgEnum("intake_doc_status", [
+  "pending",
+  "signed",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -205,6 +216,35 @@ export const houseAssignments = pgTable("house_assignments", {
     .notNull(),
 });
 
+/**
+ * A signable intake document generated for a resident (lease, house rules,
+ * consent). The body is a snapshot of the pre-filled document text at
+ * generation time; signing records a typed legal name, timestamp, and IP for
+ * a basic e-signature audit trail.
+ */
+export const intakeDocuments = pgTable("intake_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  type: intakeDocType("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  status: intakeDocStatus("status").notNull().default("pending"),
+  signedName: text("signed_name"),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  signedIp: text("signed_ip"),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export type Organization = typeof organizations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
 export type House = typeof houses.$inferSelect;
@@ -213,3 +253,4 @@ export type Bed = typeof beds.$inferSelect;
 export type Resident = typeof residents.$inferSelect;
 export type ResidentLog = typeof residentLogs.$inferSelect;
 export type HouseAssignment = typeof houseAssignments.$inferSelect;
+export type IntakeDocument = typeof intakeDocuments.$inferSelect;
