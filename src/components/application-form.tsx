@@ -45,6 +45,8 @@ export function ApplicationForm() {
   );
   const [step, setStep] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  // Only true for the brief moment the user explicitly clicks "Submit".
+  const submitIntent = useRef(false);
 
   if (state.status === "success") {
     return (
@@ -79,10 +81,15 @@ export function ApplicationForm() {
   const back = () => setStep((s) => Math.max(s - 1, 0));
   const isLast = step === steps.length - 1;
 
-  // Only allow the form to actually submit from the final step. This guards
-  // against accidental submits (e.g. pressing Enter on an earlier step).
+  // Only allow the form to actually submit when the user explicitly clicks the
+  // "Submit application" button. This guards against accidental submits when
+  // advancing to the final step, or pressing Enter on an earlier field.
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    if (!isLast) e.preventDefault();
+    if (!submitIntent.current) {
+      e.preventDefault();
+      return;
+    }
+    submitIntent.current = false;
   };
 
   return (
@@ -324,7 +331,15 @@ export function ApplicationForm() {
         </Button>
 
         {isLast ? (
-          <Button key="submit" type="submit" size="lg" disabled={pending}>
+          <Button
+            key="submit"
+            type="submit"
+            size="lg"
+            disabled={pending}
+            onClick={() => {
+              submitIntent.current = true;
+            }}
+          >
             {pending ? "Submitting…" : "Submit application"}
           </Button>
         ) : (
