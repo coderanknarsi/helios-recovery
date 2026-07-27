@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   residents,
@@ -12,6 +12,7 @@ import {
   houses,
   organizations,
   intakeDocuments,
+  documentTemplates,
 } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { buildIntakePacket, type DocContext } from "@/lib/intake-templates";
@@ -115,6 +116,35 @@ export async function generateIntakePacket(formData: FormData) {
     )
     .limit(1);
   if (existing.length > 0) return;
+
+  // Prefer the operator's uploaded document library when it exists; each
+  // resident gets a signable copy that references the stored PDF.
+  const uploaded = await db
+    .select()
+    .from(documentTemplates)
+    .where(eq(documentTemplates.orgId, access.orgId))
+    .orderBy(
+      asc(documentTemplates.sortOrder),
+      asc(documentTemplates.createdAt),
+    );
+
+  if (uploaded.length > 0) {
+    await db.insert(intakeDocuments).values(
+      uploaded.map((t) => ({
+        orgId: access.orgId,
+        residentId,
+        type: t.type,
+        title: t.name,
+        body: null,
+        templateId: t.id,
+        storagePath: t.storagePath,
+        fileName: t.fileName,
+        createdBy: access.profile.id,
+      })),
+    );
+    revalidatePath(`/app/residents/${residentId}`);
+    return;
+  }
 
   const [org] = await db
     .select({ name: organizations.name })

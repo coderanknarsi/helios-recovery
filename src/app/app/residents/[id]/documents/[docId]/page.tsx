@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShieldCheck, FileText } from "lucide-react";
 import { db } from "@/db";
 import { intakeDocuments, residents, beds } from "@/db/schema";
 import { getAccess } from "@/lib/access";
+import { signedDocumentUrl } from "@/lib/documents-storage";
 import { signDocument } from "../actions";
 
 export const metadata: Metadata = { title: "Intake document" };
@@ -59,6 +60,9 @@ export default async function DocumentPage({
   }
 
   const signed = doc.status === "signed";
+  const fileUrl = doc.storagePath
+    ? await signedDocumentUrl(doc.storagePath)
+    : null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -83,9 +87,21 @@ export default async function DocumentPage({
 
       {/* Document body */}
       <article className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8">
-        <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
-          {doc.body}
-        </div>
+        {doc.storagePath ? (
+          <a
+            href={fileUrl ?? "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary"
+          >
+            <FileText className="h-4 w-4" />
+            Open document (PDF)
+          </a>
+        ) : (
+          <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+            {doc.body}
+          </div>
+        )}
       </article>
 
       {/* Signature */}

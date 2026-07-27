@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { and, asc, eq } from "drizzle-orm";
-import { CheckCircle2, ShieldCheck, FileSignature } from "lucide-react";
+import { CheckCircle2, ShieldCheck, FileSignature, FileText } from "lucide-react";
 import { db } from "@/db";
 import { residents, intakeDocuments, organizations } from "@/db/schema";
 import { Logo } from "@/components/logo";
+import { signedDocumentUrl } from "@/lib/documents-storage";
 import { signPublicDocument } from "./actions";
 
 export const metadata: Metadata = {
@@ -79,6 +80,17 @@ export default async function PublicSignPage({
   const signedCount = docs.filter((d) => d.status === "signed").length;
   const allSigned = docs.length > 0 && signedCount === docs.length;
 
+  // Pre-sign short-lived URLs for any uploaded PDF documents.
+  const urlEntries = await Promise.all(
+    docs
+      .filter((d) => d.storagePath)
+      .map(
+        async (d) =>
+          [d.id, await signedDocumentUrl(d.storagePath!)] as const,
+      ),
+  );
+  const signedUrls = new Map(urlEntries);
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:py-14">
       <div className="flex items-center justify-between">
@@ -141,9 +153,21 @@ export default async function PublicSignPage({
               </div>
 
               <div className="mt-4 max-h-72 overflow-y-auto rounded-lg border border-border bg-background p-4">
-                <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
-                  {doc.body}
-                </div>
+                {doc.storagePath ? (
+                  <a
+                    href={signedUrls.get(doc.id) ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Open &amp; read this document (PDF)
+                  </a>
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+                    {doc.body}
+                  </div>
+                )}
               </div>
 
               {signed ? (

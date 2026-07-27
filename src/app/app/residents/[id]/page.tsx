@@ -21,6 +21,7 @@ import {
   houses,
   residentLogs,
   intakeDocuments,
+  documentTemplates,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
@@ -179,6 +180,12 @@ export default async function ResidentDetailPage({
     )
     .orderBy(desc(intakeDocuments.createdAt));
   const signedCount = documents.filter((d) => d.status === "signed").length;
+
+  const orgTemplates = await db
+    .select({ id: documentTemplates.id })
+    .from(documentTemplates)
+    .where(eq(documentTemplates.orgId, orgId));
+  const hasTemplates = orgTemplates.length > 0;
 
   const linkActive =
     !!resident.signToken &&
@@ -372,8 +379,9 @@ export default async function ResidentDetailPage({
         {documents.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-border bg-background p-6 text-center">
             <p className="text-sm text-muted-foreground">
-              No intake packet yet. Generate a pre-filled Lease, House Rules, and
-              Consent form for {resident.firstName} to review and sign.
+              {hasTemplates
+                ? `Generate a signable copy of your uploaded documents for ${resident.firstName} to review and sign.`
+                : `No intake packet yet. Generate a pre-filled Lease, House Rules, and Consent form for ${resident.firstName} to review and sign.`}
             </p>
             <form action={generateIntakePacket} className="mt-4">
               <input type="hidden" name="residentId" value={resident.id} />
@@ -385,9 +393,30 @@ export default async function ResidentDetailPage({
               </button>
             </form>
             <p className="mx-auto mt-3 max-w-md text-xs text-muted-foreground">
-              These are starter templates pre-filled with this resident&apos;s
-              details. Review the wording with your own counsel before relying
-              on them.
+              {hasTemplates ? (
+                <>
+                  Pulled from your{" "}
+                  <Link
+                    href="/app/documents"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    document library
+                  </Link>
+                  . Manage your uploaded forms there.
+                </>
+              ) : (
+                <>
+                  These are starter templates pre-filled with this
+                  resident&apos;s details. Upload your own forms in{" "}
+                  <Link
+                    href="/app/documents"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Documents
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </div>
         ) : (

@@ -65,6 +65,7 @@ export const intakeDocType = pgEnum("intake_doc_type", [
   "lease_agreement",
   "house_rules",
   "consent",
+  "other",
 ]);
 
 export const intakeDocStatus = pgEnum("intake_doc_status", [
@@ -231,9 +232,35 @@ export const houseAssignments = pgTable("house_assignments", {
 });
 
 /**
+ * An operator-uploaded document (Lease, House Rules, Consent, or a custom
+ * form) stored once per organization and reused for every resident. The file
+ * itself lives in Supabase Storage; this row holds its metadata. This is the
+ * SaaS "template library" each home builds up over time.
+ */
+export const documentTemplates = pgTable("document_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: intakeDocType("type").notNull().default("other"),
+  storagePath: text("storage_path").notNull(),
+  fileName: text("file_name").notNull(),
+  sizeBytes: integer("size_bytes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
  * A signable intake document generated for a resident (lease, house rules,
- * consent). The body is a snapshot of the pre-filled document text at
- * generation time; signing records a typed legal name, timestamp, and IP for
+ * consent). Either a text snapshot (`body`, from a built-in template) or a
+ * reference to an uploaded file (`storagePath`/`fileName`, from a
+ * documentTemplate). Signing records a typed legal name, timestamp, and IP for
  * a basic e-signature audit trail.
  */
 export const intakeDocuments = pgTable("intake_documents", {
@@ -246,7 +273,13 @@ export const intakeDocuments = pgTable("intake_documents", {
     .references(() => residents.id, { onDelete: "cascade" }),
   type: intakeDocType("type").notNull(),
   title: text("title").notNull(),
-  body: text("body").notNull(),
+  body: text("body"),
+  // Set when this document is an uploaded file rather than generated text.
+  templateId: uuid("template_id").references(() => documentTemplates.id, {
+    onDelete: "set null",
+  }),
+  storagePath: text("storage_path"),
+  fileName: text("file_name"),
   status: intakeDocStatus("status").notNull().default("pending"),
   signedName: text("signed_name"),
   signedAt: timestamp("signed_at", { withTimezone: true }),
@@ -268,3 +301,4 @@ export type Resident = typeof residents.$inferSelect;
 export type ResidentLog = typeof residentLogs.$inferSelect;
 export type HouseAssignment = typeof houseAssignments.$inferSelect;
 export type IntakeDocument = typeof intakeDocuments.$inferSelect;
+export type DocumentTemplate = typeof documentTemplates.$inferSelect;
