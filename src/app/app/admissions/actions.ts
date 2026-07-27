@@ -1,15 +1,50 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
-import { residents, beds, organizations } from "@/db/schema";
+import { residents, beds, houses, organizations } from "@/db/schema";
 import { adminOrgId } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { sendSms } from "@/lib/sms";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Reset any bed that is still marked "reserved" but is no longer claimed by a
+ * prospect or active resident back to "available". Self-heals stray holds so a
+ * bed can never get stuck reserved forever.
+ */
+async function releaseOrphanedReservedBeds(orgId: string) {
+  const claimed = await db
+    .select({ bedId: residents.bedId })
+    .from(residents)
+    .where(
+      and(
+        eq(residents.orgId, orgId),
+        isNotNull(residents.bedId),
+        inArray(residents.status, ["prospect", "active"]),
+      ),
+    );
+  const claimedIds = new Set(
+    claimed.map((r) => r.bedId).filter((b): b is string => !!b),
+  );
+
+  const reserved = await db
+    .select({ id: beds.id })
+    .from(beds)
+    .innerJoin(houses, eq(beds.houseId, houses.id))
+    .where(and(eq(houses.orgId, orgId), eq(beds.status, "reserved")));
+
+  const orphaned = reserved.map((b) => b.id).filter((id) => !claimedIds.has(id));
+  if (orphaned.length) {
+    await db
+      .update(beds)
+      .set({ status: "available" })
+      .where(inArray(beds.id, orphaned));
+  }
 }
 
 async function sendEmail(payload: Record<string, unknown>) {
@@ -53,8 +88,12 @@ export async function acceptProspect(formData: FormData) {
       .where(eq(beds.id, bedId));
   }
 
+  // Free any bed the prospect had on hold that we didn't just admit them into.
+  await releaseOrphanedReservedBeds(orgId);
+
   revalidatePath("/app/admissions");
   revalidatePath("/app");
+  revalidatePath("/app/availability");
 }
 
 /** Reserve a bed for an incoming prospect ("Hold a Bed"). */
@@ -65,6 +104,19 @@ export async function holdBed(formData: FormData) {
   const bedId = String(formData.get("bedId") ?? "");
   if (!id || !bedId) return;
 
+  // Release any bed this prospect was already holding before moving the hold.
+  const [current] = await db
+    .select({ bedId: residents.bedId })
+    .from(residents)
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)))
+    .limit(1);
+  if (current?.bedId && current.bedId !== bedId) {
+    await db
+      .update(beds)
+      .set({ status: "available" })
+      .where(and(eq(beds.id, current.bedId), eq(beds.status, "reserved")));
+  }
+
   await db
     .update(residents)
     .set({ bedId, updatedAt: new Date() })
@@ -72,8 +124,44 @@ export async function holdBed(formData: FormData) {
 
   await db.update(beds).set({ status: "reserved" }).where(eq(beds.id, bedId));
 
+  // Clean up any strays left over from earlier repeated clicks.
+  await releaseOrphanedReservedBeds(orgId);
+
   revalidatePath("/app/admissions");
   revalidatePath("/app");
+  revalidatePath("/app/availability");
+}
+
+/** Release a bed a prospect was holding (returns it to available). */
+export async function releaseHold(formData: FormData) {
+  const orgId = await adminOrgId();
+  if (!orgId) return;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const [current] = await db
+    .select({ bedId: residents.bedId })
+    .from(residents)
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)))
+    .limit(1);
+
+  await db
+    .update(residents)
+    .set({ bedId: null, updatedAt: new Date() })
+    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+
+  if (current?.bedId) {
+    await db
+      .update(beds)
+      .set({ status: "available" })
+      .where(and(eq(beds.id, current.bedId), eq(beds.status, "reserved")));
+  }
+
+  await releaseOrphanedReservedBeds(orgId);
+
+  revalidatePath("/app/admissions");
+  revalidatePath("/app");
+  revalidatePath("/app/availability");
 }
 
 /** Decline a prospect's application. */
@@ -85,11 +173,20 @@ export async function rejectProspect(formData: FormData) {
 
   await db
     .update(residents)
-    .set({ status: "rejected", waitlistedAt: null, updatedAt: new Date() })
+    .set({
+      status: "rejected",
+      waitlistedAt: null,
+      bedId: null,
+      updatedAt: new Date(),
+    })
     .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+
+  // Give back any bed they were holding.
+  await releaseOrphanedReservedBeds(orgId);
 
   revalidatePath("/app/admissions");
   revalidatePath("/app");
+  revalidatePath("/app/availability");
 }
 
 /** Move a prospect onto the waitlist (kept in FIFO order by waitlistedAt). */

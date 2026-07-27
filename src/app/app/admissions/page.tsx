@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { and, asc, desc, eq } from "drizzle-orm";
-import { Phone, Mail, CalendarClock, ListOrdered, BedDouble, BellRing, MessageSquare } from "lucide-react";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { Phone, Mail, CalendarClock, ListOrdered, BedDouble, BellRing, MessageSquare, BedSingle, X } from "lucide-react";
 import { db } from "@/db";
 import { residents, beds, rooms, houses } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import {
   acceptProspect,
   holdBed,
+  releaseHold,
   rejectProspect,
   addToWaitlist,
   removeFromWaitlist,
@@ -66,6 +67,26 @@ export default async function AdmissionsPage() {
 
   const bedOptions: BedOption[] = availableBeds;
 
+  // Beds currently on hold for these prospects, so we can show a clear
+  // "Holding …" indicator and let them be accepted into that bed.
+  const heldBedIds = prospects
+    .map((p) => p.bedId)
+    .filter((b): b is string => !!b);
+  const heldBeds = heldBedIds.length
+    ? await db
+        .select({
+          id: beds.id,
+          label: beds.label,
+          room: rooms.name,
+          house: houses.name,
+        })
+        .from(beds)
+        .innerJoin(rooms, eq(beds.roomId, rooms.id))
+        .innerJoin(houses, eq(beds.houseId, houses.id))
+        .where(inArray(beds.id, heldBedIds))
+    : [];
+  const heldById = new Map(heldBeds.map((b) => [b.id, b]));
+
   const newApplications = prospects.filter((p) => !p.waitlistedAt);
   const waitlist = prospects
     .filter((p) => p.waitlistedAt)
@@ -113,7 +134,9 @@ export default async function AdmissionsPage() {
             </p>
           ) : (
             <div className="mt-4 space-y-5">
-              {newApplications.map((p) => (
+              {newApplications.map((p) => {
+                const held = p.bedId ? heldById.get(p.bedId) : null;
+                return (
             <article
               key={p.id}
               className="rounded-xl border border-border bg-surface p-6 shadow-sm"
@@ -176,19 +199,43 @@ export default async function AdmissionsPage() {
                 <Detail label="Notes" value={p.notes} />
               </dl>
 
+              {held && (
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3">
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-primary">
+                    <BedSingle className="h-4 w-4" />
+                    Holding {held.house} — {held.room} · {held.label}
+                  </span>
+                  <form action={releaseHold}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Release hold
+                    </button>
+                  </form>
+                </div>
+              )}
+
               <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-border pt-5">
                 <form action={acceptProspect} className="flex items-end gap-2">
                   <input type="hidden" name="id" value={p.id} />
-                  {bedOptions.length > 0 && (
+                  {(bedOptions.length > 0 || held) && (
                     <label className="text-sm">
                       <span className="mb-1 block text-xs font-medium text-muted-foreground">
-                        Assign bed (optional)
+                        {held ? "Assign bed" : "Assign bed (optional)"}
                       </span>
                       <select
                         name="bedId"
-                        defaultValue=""
+                        defaultValue={held?.id ?? ""}
                         className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
                       >
+                        {held && (
+                          <option value={held.id}>
+                            {held.house} — {held.room} · {held.label} (on hold)
+                          </option>
+                        )}
                         <option value="">No bed yet</option>
                         {bedOptions.map((b) => (
                           <option key={b.id} value={b.id}>
@@ -254,7 +301,8 @@ export default async function AdmissionsPage() {
                 </form>
               </div>
             </article>
-          ))}
+                );
+              })}
             </div>
           )}
 
