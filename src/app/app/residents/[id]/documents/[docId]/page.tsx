@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { intakeDocuments, residents, beds } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { signedDocumentUrl } from "@/lib/documents-storage";
+import { SIGNING_CONSENT } from "@/lib/esign";
 import { signDocument } from "../actions";
 
 export const metadata: Metadata = { title: "Intake document" };
@@ -62,6 +63,9 @@ export default async function DocumentPage({
   const signed = doc.status === "signed";
   const fileUrl = doc.storagePath
     ? await signedDocumentUrl(doc.storagePath)
+    : null;
+  const signedCopyUrl = doc.signedStoragePath
+    ? await signedDocumentUrl(doc.signedStoragePath)
     : null;
 
   return (
@@ -136,7 +140,38 @@ export default async function DocumentPage({
                 {doc.signedIp ?? "—"}
               </dd>
             </div>
+            {doc.signedUserAgent && (
+              <div className="sm:col-span-3">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Device / browser
+                </dt>
+                <dd className="mt-0.5 break-all text-sm text-foreground">
+                  {doc.signedUserAgent}
+                </dd>
+              </div>
+            )}
+            {doc.originalHash && (
+              <div className="sm:col-span-3">
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Document fingerprint (SHA-256)
+                </dt>
+                <dd className="mt-0.5 break-all font-mono text-xs text-foreground">
+                  {doc.originalHash}
+                </dd>
+              </div>
+            )}
           </dl>
+          {signedCopyUrl && (
+            <a
+              href={signedCopyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-accent hover:text-accent"
+            >
+              <FileText className="h-4 w-4" />
+              Download signed copy with Certificate of Completion
+            </a>
+          )}
         </div>
       ) : (
         <form
@@ -155,8 +190,7 @@ export default async function DocumentPage({
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-ring"
             />
             <span className="text-sm text-muted-foreground">
-              I have read and agree to this document. I understand that typing my
-              name below constitutes my legal electronic signature.
+              {SIGNING_CONSENT}
             </span>
           </label>
 

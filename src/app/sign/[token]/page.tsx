@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { residents, intakeDocuments, organizations } from "@/db/schema";
 import { Logo } from "@/components/logo";
 import { signedDocumentUrl } from "@/lib/documents-storage";
+import { SIGNING_CONSENT } from "@/lib/esign";
 import { signPublicDocument } from "./actions";
 
 export const metadata: Metadata = {
@@ -91,6 +92,17 @@ export default async function PublicSignPage({
   );
   const signedUrls = new Map(urlEntries);
 
+  // Pre-sign URLs for the generated signed copies (with certificate).
+  const copyEntries = await Promise.all(
+    docs
+      .filter((d) => d.signedStoragePath)
+      .map(
+        async (d) =>
+          [d.id, await signedDocumentUrl(d.signedStoragePath!)] as const,
+      ),
+  );
+  const signedCopyUrls = new Map(copyEntries);
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:py-14">
       <div className="flex items-center justify-between">
@@ -171,13 +183,26 @@ export default async function PublicSignPage({
               </div>
 
               {signed ? (
-                <div className="mt-4 flex items-center gap-2 rounded-lg bg-accent/5 px-4 py-3 text-sm text-muted-foreground">
-                  <ShieldCheck className="h-4 w-4 text-accent" />
-                  Signed by{" "}
-                  <span className="font-medium text-foreground">
-                    {doc.signedName}
-                  </span>{" "}
-                  on {fmtDateTime(doc.signedAt)}
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center gap-2 rounded-lg bg-accent/5 px-4 py-3 text-sm text-muted-foreground">
+                    <ShieldCheck className="h-4 w-4 text-accent" />
+                    Signed by{" "}
+                    <span className="font-medium text-foreground">
+                      {doc.signedName}
+                    </span>{" "}
+                    on {fmtDateTime(doc.signedAt)}
+                  </div>
+                  {signedCopyUrls.get(doc.id) && (
+                    <a
+                      href={signedCopyUrls.get(doc.id) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Download your signed copy (with certificate)
+                    </a>
+                  )}
                 </div>
               ) : (
                 <form action={signPublicDocument} className="mt-4">
@@ -192,8 +217,7 @@ export default async function PublicSignPage({
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-ring"
                     />
                     <span className="text-sm text-muted-foreground">
-                      I have read and agree to this document. I understand that
-                      typing my name constitutes my legal electronic signature.
+                      {SIGNING_CONSENT}
                     </span>
                   </label>
 

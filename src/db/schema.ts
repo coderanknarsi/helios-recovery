@@ -284,6 +284,17 @@ export const intakeDocuments = pgTable("intake_documents", {
   signedName: text("signed_name"),
   signedAt: timestamp("signed_at", { withTimezone: true }),
   signedIp: text("signed_ip"),
+  // Court-provable audit trail captured at signing time.
+  signedUserAgent: text("signed_user_agent"),
+  // Exact consent statement the signer agreed to.
+  consentText: text("consent_text"),
+  // SHA-256 of the exact document bytes/text presented to the signer.
+  originalHash: text("original_hash"),
+  // Generated signed copy: original stamped with the signature + an appended
+  // Certificate of Completion. Stored in the same private bucket.
+  signedStoragePath: text("signed_storage_path"),
+  // SHA-256 of the generated signed copy (detects later tampering).
+  signedHash: text("signed_hash"),
   createdBy: uuid("created_by").references(() => profiles.id, {
     onDelete: "set null",
   }),

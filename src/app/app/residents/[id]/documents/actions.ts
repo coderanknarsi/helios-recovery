@@ -18,6 +18,8 @@ import { getAccess, type Access } from "@/lib/access";
 import { buildIntakePacket, type DocContext } from "@/lib/intake-templates";
 import { siteConfig } from "@/lib/site";
 import { sendSms } from "@/lib/sms";
+import { SIGNING_CONSENT } from "@/lib/esign";
+import { finalizeSignedDocument } from "@/lib/sign-document";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -209,7 +211,7 @@ export async function signDocument(formData: FormData) {
 
   // The document must belong to this resident/org and be unsigned.
   const [doc] = await db
-    .select({ id: intakeDocuments.id, status: intakeDocuments.status })
+    .select()
     .from(intakeDocuments)
     .where(
       and(
@@ -226,14 +228,48 @@ export async function signDocument(formData: FormData) {
     h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     h.get("x-real-ip") ||
     null;
+  const userAgent = h.get("user-agent");
+
+  const [org] = await db
+    .select({ name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, access.orgId))
+    .limit(1);
+
+  const signedAt = new Date();
+
+  // Generate a court-provable signed copy; never block signing on it.
+  let signedStoragePath: string | null = null;
+  let originalHash: string | null = null;
+  let signedHash: string | null = null;
+  try {
+    const result = await finalizeSignedDocument({
+      doc,
+      orgName: org?.name ?? "Helios Recovery Residences",
+      signedName,
+      signedAt,
+      ip,
+      userAgent,
+    });
+    signedStoragePath = result.signedStoragePath;
+    originalHash = result.originalHash;
+    signedHash = result.signedHash;
+  } catch (err) {
+    console.error("Signed-copy generation failed:", err);
+  }
 
   await db
     .update(intakeDocuments)
     .set({
       status: "signed",
       signedName,
-      signedAt: new Date(),
+      signedAt,
       signedIp: ip,
+      signedUserAgent: userAgent,
+      consentText: SIGNING_CONSENT,
+      originalHash,
+      signedStoragePath,
+      signedHash,
     })
     .where(eq(intakeDocuments.id, docId));
 
