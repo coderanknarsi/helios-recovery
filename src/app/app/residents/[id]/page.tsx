@@ -16,6 +16,7 @@ import {
   EyeOff,
   Smartphone,
   ShieldCheck,
+  Send,
 } from "lucide-react";
 import { db } from "@/db";
 import {
@@ -39,6 +40,7 @@ import {
   deleteLog,
   dischargeResident,
   revokePortalAccess,
+  sendPortalInvite,
   setExpectedDeparture,
   toggleLogVisibility,
 } from "./actions";
@@ -621,6 +623,19 @@ export default async function ResidentDetailPage({
             </dl>
 
             <div className="mt-4">
+              <form action={sendPortalInvite} className="mb-3">
+                <input type="hidden" name="residentId" value={resident.id} />
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium transition hover:border-primary hover:text-primary"
+                >
+                  <Send className="h-4 w-4" />
+                  Text setup link
+                </button>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  Sends a text with setup steps. Costs one message.
+                </span>
+              </form>
               <MessageForm
                 residentId={resident.id}
                 firstName={resident.firstName}

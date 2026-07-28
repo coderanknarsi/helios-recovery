@@ -7,6 +7,8 @@ import { residents, beds, houses, residentLogs } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { notifyResident } from "@/lib/push";
 import { revokeAllResidentSessions } from "@/lib/resident-auth";
+import { siteConfig } from "@/lib/site";
+import { sendSms } from "@/lib/sms";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -81,6 +83,34 @@ export async function addLog(formData: FormData) {
     result,
     visibleToResident: formData.get("visibleToResident") === "on",
     createdBy: access.profile.id,
+  });
+
+  refresh(residentId);
+}
+
+/**
+ * Texts the resident a link to the install walkthrough. This is the only
+ * onboarding moment that costs an SMS, so it is a deliberate button rather
+ * than something that fires automatically.
+ */
+export async function sendPortalInvite(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return;
+  if (!(await scopedResident(residentId, access))) return;
+
+  const [r] = await db
+    .select({ firstName: residents.firstName, phone: residents.phone })
+    .from(residents)
+    .where(
+      and(eq(residents.id, residentId), eq(residents.orgId, access.orgId)),
+    )
+    .limit(1);
+  if (!r?.phone) return;
+
+  await sendSms({
+    to: r.phone,
+    text: `Hi ${r.firstName}, here's the ${siteConfig.shortName} resident app - your documents, house rules and support in one place: ${siteConfig.url}/install`,
   });
 
   refresh(residentId);

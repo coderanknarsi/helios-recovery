@@ -26,6 +26,14 @@ export function SiteFooter() {
                 </Link>
               </li>
             ))}
+            <li>
+              <Link
+                href="/install"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Resident app
+              </Link>
+            </li>
           </ul>
         </div>
 

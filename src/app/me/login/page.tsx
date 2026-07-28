@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
+import { InstallFirstNotice } from "@/components/install-guide";
 import { getResidentSession } from "@/lib/resident-access";
 import { siteConfig } from "@/lib/site";
 import { ResidentLoginForm } from "./resident-login-form";
@@ -31,6 +32,9 @@ export default async function ResidentLoginPage() {
             <ResidentLoginForm />
           </div>
         </div>
+
+        <InstallFirstNotice />
+
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Trouble signing in? Contact your house manager or email{" "}
           <a
