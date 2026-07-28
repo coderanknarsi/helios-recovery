@@ -32,6 +32,8 @@ export type ResidentAccess = {
   houseId: string | null;
   houseName: string | null;
   housePhone: string | null;
+  houseManagerName: string | null;
+  houseManagerPhone: string | null;
   houseAddressLine1: string | null;
   houseCity: string | null;
   houseState: string | null;
@@ -67,6 +69,8 @@ export async function getResidentSession(): Promise<ResidentAccess | null> {
       houseId: houses.id,
       houseName: houses.name,
       housePhone: houses.phone,
+      houseManagerName: houses.managerName,
+      houseManagerPhone: houses.managerPhone,
       houseAddressLine1: houses.addressLine1,
       houseCity: houses.city,
       houseState: houses.state,

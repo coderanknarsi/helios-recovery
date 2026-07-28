@@ -134,29 +134,36 @@ export default async function ResidentHomePage() {
       )}
 
       {me.houseName && (
-        <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-          <h2 className="text-base font-semibold">{me.houseName}</h2>
+        <Link
+          href="/me/house"
+          className="block rounded-xl border border-border bg-surface p-6 shadow-sm transition hover:border-primary"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">{me.houseName}</h2>
+            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+          </div>
           {address && (
             <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
               {address}
             </p>
           )}
-          {me.housePhone && (
-            <a
-              href={`tel:${me.housePhone.replace(/[^\d+]/g, "")}`}
-              className="mt-2 flex items-center gap-2 text-sm font-medium text-primary transition hover:text-primary-hover"
-            >
-              <Phone className="h-4 w-4 shrink-0" />
-              {me.housePhone}
-            </a>
-          )}
-        </section>
+          <p className="mt-2 text-sm font-medium text-primary">
+            House rules, safety info &amp; policies
+          </p>
+        </Link>
       )}
 
-      <p className="text-center text-xs text-muted-foreground">
-        More is coming here soon — house rules, chores, and passes.
-      </p>
+      {(me.houseManagerPhone ?? me.housePhone) && (
+        <a
+          href={`tel:${(me.houseManagerPhone ?? me.housePhone ?? "").replace(/[^\d+]/g, "")}`}
+          className="flex items-center gap-2 rounded-xl border border-border bg-surface p-4 text-sm font-medium text-primary shadow-sm transition hover:border-primary"
+        >
+          <Phone className="h-4 w-4 shrink-0" />
+          Call {me.houseManagerName ?? "the house"} ·{" "}
+          {me.houseManagerPhone ?? me.housePhone}
+        </a>
+      )}
     </div>
   );
 }

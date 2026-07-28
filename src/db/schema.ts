@@ -7,6 +7,7 @@ import {
   numeric,
   date,
   pgEnum,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -108,6 +109,17 @@ export const houses = pgTable("houses", {
   postalCode: text("postal_code"),
   phone: text("phone"),
   notes: text("notes"),
+  /** Who residents should actually call, shown in the resident portal. */
+  managerName: text("manager_name"),
+  managerPhone: text("manager_phone"),
+  /** Day-to-day expectations surfaced to residents. */
+  curfew: text("curfew"),
+  quietHours: text("quiet_hours"),
+  smokingArea: text("smoking_area"),
+  parkingNotes: text("parking_notes"),
+  /** Safety information NARR expects residents to be told, in writing. */
+  naloxoneLocations: text("naloxone_locations"),
+  evacuationNotes: text("evacuation_notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -304,6 +316,34 @@ export const intakeDocuments = pgTable("intake_documents", {
 });
 
 /**
+ * Editable policy text shown to residents (house rules, resident rights,
+ * grievance procedure, etc.). One row per org per slug; the slug catalog and
+ * NARR-aligned starting text live in src/lib/resident-content.ts.
+ */
+export const contentBlocks = pgTable(
+  "content_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    updatedBy: uuid("updated_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [uniqueIndex("content_blocks_org_slug_idx").on(table.orgId, table.slug)],
+);
+
+/**
  * A one-time passcode texted to a resident so they can sign in to the resident
  * portal. Codes are stored hashed, are single-use, and expire quickly.
  */
@@ -365,3 +405,4 @@ export type IntakeDocument = typeof intakeDocuments.$inferSelect;
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 export type ResidentOtp = typeof residentOtps.$inferSelect;
 export type ResidentSession = typeof residentSessions.$inferSelect;
+export type ContentBlock = typeof contentBlocks.$inferSelect;

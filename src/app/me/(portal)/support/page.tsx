@@ -99,13 +99,14 @@ export default async function ResidentSupportPage() {
 
       <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
         <h2 className="text-base font-semibold">Your house team</h2>
-        {me.housePhone ? (
+        {me.houseManagerPhone || me.housePhone ? (
           <a
-            href={`tel:${me.housePhone.replace(/[^\d+]/g, "")}`}
+            href={`tel:${(me.houseManagerPhone ?? me.housePhone ?? "").replace(/[^\d+]/g, "")}`}
             className="mt-3 flex items-center gap-2 text-sm font-medium text-primary transition hover:text-primary-hover"
           >
             <Phone className="h-4 w-4 shrink-0" />
-            {me.houseName ?? "House"} · {me.housePhone}
+            {me.houseManagerName ?? me.houseName ?? "House"} ·{" "}
+            {me.houseManagerPhone ?? me.housePhone}
           </a>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">

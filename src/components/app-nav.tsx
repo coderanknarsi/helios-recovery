@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarRange,
   FileText,
+  BookOpen,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -37,6 +38,12 @@ const items: NavItem[] = [
     href: "/app/documents",
     label: "Documents",
     icon: FileText,
+    adminOnly: true,
+  },
+  {
+    href: "/app/content",
+    label: "Resident Info",
+    icon: BookOpen,
     adminOnly: true,
   },
   { href: "/app/team", label: "Team", icon: UserCog, adminOnly: true },
