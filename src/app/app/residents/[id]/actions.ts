@@ -78,9 +78,51 @@ export async function addLog(formData: FormData) {
     title: field(formData, "title") || null,
     detail: field(formData, "detail") || null,
     result,
+    visibleToResident: formData.get("visibleToResident") === "on",
     createdBy: access.profile.id,
   });
 
+  refresh(residentId);
+}
+
+/** Show or hide a single log entry in the resident's portal. */
+export async function toggleLogVisibility(formData: FormData) {
+  const access = await getAccess();
+  const logId = field(formData, "logId");
+  const residentId = field(formData, "residentId");
+  if (!logId || !residentId) return;
+  if (!(await scopedResident(residentId, access))) return;
+
+  const [log] = await db
+    .select({ visibleToResident: residentLogs.visibleToResident })
+    .from(residentLogs)
+    .where(
+      and(
+        eq(residentLogs.id, logId),
+        eq(residentLogs.residentId, residentId),
+        eq(residentLogs.orgId, access.orgId),
+      ),
+    )
+    .limit(1);
+  if (!log) return;
+
+  await db
+    .update(residentLogs)
+    .set({ visibleToResident: !log.visibleToResident })
+    .where(eq(residentLogs.id, logId));
+
+  refresh(residentId);
+  revalidatePath("/me");
+}
+
+/** Sign the resident out of the portal on every device. */
+export async function revokePortalAccess(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return;
+  if (!(await scopedResident(residentId, access))) return;
+
+  await revokeAllResidentSessions(residentId);
   refresh(residentId);
 }
 

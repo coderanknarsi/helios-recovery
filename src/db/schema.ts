@@ -8,6 +8,7 @@ import {
   date,
   pgEnum,
   uniqueIndex,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -218,6 +219,12 @@ export const residentLogs = pgTable("resident_logs", {
   detail: text("detail"),
   // Only meaningful for drug_test entries.
   result: drugTestResult("result"),
+  /**
+   * Whether the resident can see this entry in their portal. Off by default —
+   * staff decide per entry. NARR's drug testing policy expects residents to
+   * receive their own results so they can dispute or celebrate them.
+   */
+  visibleToResident: boolean("visible_to_resident").notNull().default(false),
   createdBy: uuid("created_by").references(() => profiles.id, {
     onDelete: "set null",
   }),

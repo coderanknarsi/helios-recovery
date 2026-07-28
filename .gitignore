@@ -41,4 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Reference material only — third-party copyrighted publications.
+# Never commit or deploy these.
+/NARR Docs/
+
 .vercel

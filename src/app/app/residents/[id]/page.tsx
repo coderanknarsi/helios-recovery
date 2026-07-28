@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import {
   ArrowLeft,
   BedDouble,
@@ -12,6 +12,9 @@ import {
   FileSignature,
   FileCheck2,
   ChevronRight,
+  Eye,
+  EyeOff,
+  Smartphone,
 } from "lucide-react";
 import { db } from "@/db";
 import {
@@ -22,11 +25,19 @@ import {
   residentLogs,
   intakeDocuments,
   documentTemplates,
+  residentSessions,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { AddLogForm } from "./add-log-form";
-import { assignBed, deleteLog, dischargeResident, setExpectedDeparture } from "./actions";
+import {
+  assignBed,
+  deleteLog,
+  dischargeResident,
+  revokePortalAccess,
+  setExpectedDeparture,
+  toggleLogVisibility,
+} from "./actions";
 import {
   generateIntakePacket,
   resetIntakePacket,
@@ -161,6 +172,21 @@ export default async function ResidentDetailPage({
             ),
       ),
   ]);
+
+  const portalSessions = await db
+    .select({ lastUsedAt: residentSessions.lastUsedAt })
+    .from(residentSessions)
+    .where(
+      and(
+        eq(residentSessions.residentId, id),
+        isNull(residentSessions.revokedAt),
+        gt(residentSessions.expiresAt, new Date()),
+      ),
+    )
+    .orderBy(desc(residentSessions.lastUsedAt));
+
+  const lastSeen = portalSessions[0]?.lastUsedAt ?? null;
+  const canUsePortal = resident.status === "active" && !!resident.phone;
 
   const documents = await db
     .select({
@@ -485,6 +511,66 @@ export default async function ResidentDetailPage({
         )}
       </div>
 
+      {/* Portal access */}
+      <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Smartphone className="h-4 w-4 text-muted-foreground" />
+          Resident portal
+        </h2>
+
+        {!canUsePortal ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {resident.status !== "active"
+              ? "Only active residents can sign in. Portal access ends automatically at discharge."
+              : "Add a mobile number above so this resident can sign in with a texted code."}
+          </p>
+        ) : (
+          <>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Signs in at{" "}
+              <span className="font-medium text-foreground">
+                {siteConfig.url}/me
+              </span>{" "}
+              with a code texted to {resident.phone}.
+            </p>
+            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Signed-in devices
+                </dt>
+                <dd className="mt-0.5 font-medium">{portalSessions.length}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Last opened
+                </dt>
+                <dd className="mt-0.5 font-medium">
+                  {lastSeen
+                    ? lastSeen.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "Never"}
+                </dd>
+              </div>
+            </dl>
+            {portalSessions.length > 0 && (
+              <form action={revokePortalAccess} className="mt-4">
+                <input type="hidden" name="residentId" value={resident.id} />
+                <button
+                  type="submit"
+                  className="text-xs font-medium text-muted-foreground transition hover:text-red-600"
+                >
+                  Sign out all devices
+                </button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
+
       {/* Logs */}
       <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -531,6 +617,12 @@ export default async function ResidentDetailPage({
                     <span className="text-xs text-muted-foreground">
                       {fmtDate(log.occurredAt)}
                     </span>
+                    {log.visibleToResident && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                        <Eye className="h-3 w-3" />
+                        Shared
+                      </span>
+                    )}
                   </div>
                   {log.title && (
                     <div className="mt-1 text-sm font-medium">{log.title}</div>
@@ -541,21 +633,46 @@ export default async function ResidentDetailPage({
                     </div>
                   )}
                 </div>
-                <form action={deleteLog}>
-                  <input type="hidden" name="logId" value={log.id} />
-                  <input
-                    type="hidden"
-                    name="residentId"
-                    value={resident.id}
-                  />
-                  <button
-                    type="submit"
-                    title="Delete entry"
-                    className="rounded-md p-1.5 text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </form>
+                <div className="flex shrink-0 items-center gap-1">
+                  <form action={toggleLogVisibility}>
+                    <input type="hidden" name="logId" value={log.id} />
+                    <input
+                      type="hidden"
+                      name="residentId"
+                      value={resident.id}
+                    />
+                    <button
+                      type="submit"
+                      title={
+                        log.visibleToResident
+                          ? "Hide from resident's portal"
+                          : "Show in resident's portal"
+                      }
+                      className="rounded-md p-1.5 text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
+                    >
+                      {log.visibleToResident ? (
+                        <Eye className="h-4 w-4" />
+                      ) : (
+                        <EyeOff className="h-4 w-4" />
+                      )}
+                    </button>
+                  </form>
+                  <form action={deleteLog}>
+                    <input type="hidden" name="logId" value={log.id} />
+                    <input
+                      type="hidden"
+                      name="residentId"
+                      value={resident.id}
+                    />
+                    <button
+                      type="submit"
+                      title="Delete entry"
+                      className="rounded-md p-1.5 text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
               </li>
             ))}
           </ul>

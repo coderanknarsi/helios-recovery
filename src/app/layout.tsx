@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 
@@ -29,6 +29,17 @@ export const metadata: Metadata = {
       "Safe, structured, and supportive sober living homes that help people build lasting recovery.",
     type: "website",
   },
+  appleWebApp: {
+    capable: true,
+    title: "Helios Recovery",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#fffdf9",
+  // Lets the portal draw into the iPhone safe areas when installed.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

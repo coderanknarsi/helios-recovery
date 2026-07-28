@@ -88,6 +88,21 @@ export function AddLogForm({ residentId }: { residentId: string }) {
         </span>
         <textarea name="detail" rows={2} className={fieldClass} />
       </label>
+      <label className="flex items-start gap-2.5 text-sm">
+        <input
+          type="checkbox"
+          name="visibleToResident"
+          // Remount when the type changes so the default can follow it.
+          key={type}
+          defaultChecked={type === "drug_test"}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-ring/40"
+        />
+        <span className="text-muted-foreground">
+          Show this to the resident in their portal.
+          {type === "drug_test" &&
+            " Residents have a right to their own test results."}
+        </span>
+      </label>
       <button
         type="submit"
         className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"

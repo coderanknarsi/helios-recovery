@@ -233,6 +233,36 @@ REFUNDS
 DISPUTES
 If you believe a charge is wrong, use the Grievances & Complaints process. Bring your receipts.`,
   },
+  {
+    slug: "personal_property",
+    title: "Your Belongings",
+    purpose:
+      "How personal property is stored, searched, and handled after move-out. NARR Standard 5a requires this to be in the resident agreement.",
+    defaultBody: `[EDIT THIS DOCUMENT — the timeframes below are placeholders.]
+
+YOUR SPACE
+You have your own storage for personal items and your own food storage space. Do not go into another resident's belongings, and they will not go into yours.
+
+SEARCHES
+Staff may search living areas and personal belongings to keep the house alcohol and drug free. Searches follow the prohibited items list in the House Rules. Whenever it is possible, you will be present for a search of your own belongings. Searches are not used as punishment and are not targeted at one person without reason.
+
+WHAT WE ARE NOT RESPONSIBLE FOR
+The house is not a storage facility and does not insure your property. Keep valuables and cash to a minimum. Report a theft to staff immediately.
+
+IF YOU LEAVE THINGS BEHIND
+This applies whether you move out planned, leave on your own, or are discharged.
+
+1. Your belongings are inventoried, boxed, and stored securely for [30] days. You get a copy of the inventory if you ask for it.
+2. We will make a reasonable effort to reach you and your emergency contact at the numbers on file to arrange pickup.
+3. You may pick your belongings up during [days/hours] by arranging it with staff first. Someone else may pick them up with your written permission.
+4. After [30] days, unclaimed property may be donated or disposed of.
+5. Prescription medication, identification documents, and legal paperwork are handled separately and are never thrown away without trying to reach you first.
+
+We do not hold your belongings over an unpaid balance. Your things are yours.
+
+QUESTIONS OR DISAGREEMENTS
+If you believe your property was mishandled, use the Grievances & Complaints process.`,
+  },
 ];
 
 export function contentDefinition(slug: string) {

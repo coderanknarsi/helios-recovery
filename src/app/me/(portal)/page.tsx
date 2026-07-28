@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -10,10 +10,37 @@ import {
   Sparkles,
 } from "lucide-react";
 import { db } from "@/db";
-import { intakeDocuments } from "@/db/schema";
+import { intakeDocuments, residentLogs } from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
+import { InstallHint } from "@/components/install-hint";
 
 export const dynamic = "force-dynamic";
+
+const logTypeLabels: Record<string, string> = {
+  note: "Note",
+  drug_test: "Drug test",
+  infraction: "Infraction",
+  pass: "Pass",
+  chore: "Chore",
+  medication: "Medication",
+};
+
+const resultStyles: Record<string, string> = {
+  pass: "bg-accent/10 text-accent",
+  fail: "bg-red-50 text-red-700",
+  refused: "bg-red-50 text-red-700",
+  pending: "bg-primary/10 text-primary",
+};
+
+/** Formats a YYYY-MM-DD date without shifting it across time zones. */
+function fmtDay(value: string) {
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return value;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 /** Whole days between a YYYY-MM-DD date and today, or null if unusable. */
 function daysSince(value: string | null) {
@@ -48,18 +75,39 @@ function Stat({
 export default async function ResidentHomePage() {
   const me = await requireResident();
 
-  const docs = await db
-    .select({
-      id: intakeDocuments.id,
-      status: intakeDocuments.status,
-    })
-    .from(intakeDocuments)
-    .where(
-      and(
-        eq(intakeDocuments.residentId, me.residentId),
-        eq(intakeDocuments.orgId, me.orgId),
+  const [docs, updates] = await Promise.all([
+    db
+      .select({
+        id: intakeDocuments.id,
+        status: intakeDocuments.status,
+      })
+      .from(intakeDocuments)
+      .where(
+        and(
+          eq(intakeDocuments.residentId, me.residentId),
+          eq(intakeDocuments.orgId, me.orgId),
+        ),
       ),
-    );
+    db
+      .select({
+        id: residentLogs.id,
+        type: residentLogs.type,
+        occurredAt: residentLogs.occurredAt,
+        title: residentLogs.title,
+        detail: residentLogs.detail,
+        result: residentLogs.result,
+      })
+      .from(residentLogs)
+      .where(
+        and(
+          eq(residentLogs.residentId, me.residentId),
+          eq(residentLogs.orgId, me.orgId),
+          eq(residentLogs.visibleToResident, true),
+        ),
+      )
+      .orderBy(desc(residentLogs.occurredAt), desc(residentLogs.createdAt))
+      .limit(10),
+  ]);
 
   const unsigned = docs.filter((d) => d.status !== "signed").length;
   const daysHere = daysSince(me.admitDate);
@@ -133,6 +181,53 @@ export default async function ResidentHomePage() {
         </div>
       )}
 
+      {updates.length > 0 && (
+        <section>
+          <h2 className="text-base font-semibold">Your record</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Entries your house team has shared with you. If something looks
+            wrong, talk to your house manager.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {updates.map((entry) => (
+              <li
+                key={entry.id}
+                className="rounded-xl border border-border bg-surface p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">
+                    {logTypeLabels[entry.type] ?? entry.type}
+                  </span>
+                  {entry.result && (
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                        resultStyles[entry.result] ??
+                        "bg-surface-muted text-muted-foreground"
+                      }`}
+                    >
+                      {entry.result}
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {fmtDay(entry.occurredAt)}
+                  </span>
+                </div>
+                {entry.title && (
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    {entry.title}
+                  </p>
+                )}
+                {entry.detail && (
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                    {entry.detail}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {me.houseName && (
         <Link
           href="/me/house"
@@ -164,6 +259,8 @@ export default async function ResidentHomePage() {
           {me.houseManagerPhone ?? me.housePhone}
         </a>
       )}
+
+      <InstallHint />
     </div>
   );
 }
