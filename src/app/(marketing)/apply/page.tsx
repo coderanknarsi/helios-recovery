@@ -50,14 +50,7 @@ export default function ApplyPage() {
       </div>
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
-        Prefer to talk first? Call us at{" "}
-        <Link
-          href={`tel:${siteConfig.phone}`}
-          className="font-medium text-foreground hover:underline"
-        >
-          {siteConfig.phone}
-        </Link>{" "}
-        or{" "}
+        Prefer to talk first?{" "}
         <Link href="/contact" className="font-medium text-foreground hover:underline">
           send a message
         </Link>

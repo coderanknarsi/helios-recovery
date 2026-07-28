@@ -37,11 +37,6 @@ export function SiteFooter() {
                 {siteConfig.email}
               </a>
             </li>
-            <li>
-              <a className="hover:text-foreground" href={`tel:${siteConfig.phone}`}>
-                {siteConfig.phone}
-              </a>
-            </li>
             <li>{siteConfig.address}</li>
             <li>{siteConfig.location}</li>
           </ul>

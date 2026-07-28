@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   ShieldCheck,
   HeartHandshake,
@@ -186,12 +185,6 @@ export default function HomePage() {
             <ButtonLink href="/apply" size="lg">
               Apply for a Bed
             </ButtonLink>
-            <Link
-              href={`tel:${siteConfig.phone}`}
-              className="text-sm font-medium text-background/80 hover:text-background"
-            >
-              or call {siteConfig.phone}
-            </Link>
           </div>
         </div>
       </section>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Mail, Phone, MapPin } from "lucide-react";
+import { Mail, MapPin } from "lucide-react";
 import { ContactForm } from "@/components/contact-form";
 import { siteConfig } from "@/lib/site";
 
@@ -38,22 +38,6 @@ export default function ContactPage() {
                     href={`mailto:${siteConfig.email}`}
                   >
                     {siteConfig.email}
-                  </a>
-                </dd>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Phone className="h-5 w-5" />
-              </span>
-              <div>
-                <dt className="text-sm font-medium">Phone</dt>
-                <dd>
-                  <a
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                    href={`tel:${siteConfig.phone}`}
-                  >
-                    {siteConfig.phone}
                   </a>
                 </dd>
               </div>

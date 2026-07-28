@@ -7,7 +7,7 @@ export const siteConfig = {
   email: "heliosrecoveryresidence@gmail.com",
   phone: "(555) 010-0100",
   address: "1426 Fairview Ave, Spencer, IA 51301",
-  location: "Serving Northwest Iowa primarily",
+  location: "Serving Northwest Iowa",
 };
 
 export const mainNav = [
