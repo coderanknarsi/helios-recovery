@@ -28,9 +28,14 @@ export type ResidentAccess = {
   phone: string | null;
   email: string | null;
   admitDate: string | null;
+  sobrietyDate: string | null;
   houseId: string | null;
   houseName: string | null;
   housePhone: string | null;
+  houseAddressLine1: string | null;
+  houseCity: string | null;
+  houseState: string | null;
+  housePostalCode: string | null;
   roomName: string | null;
   bedLabel: string | null;
 };
@@ -57,10 +62,15 @@ export async function getResidentSession(): Promise<ResidentAccess | null> {
       phone: residents.phone,
       email: residents.email,
       admitDate: residents.admitDate,
+      sobrietyDate: residents.sobrietyDate,
       status: residents.status,
       houseId: houses.id,
       houseName: houses.name,
       housePhone: houses.phone,
+      houseAddressLine1: houses.addressLine1,
+      houseCity: houses.city,
+      houseState: houses.state,
+      housePostalCode: houses.postalCode,
       roomName: rooms.name,
       bedLabel: beds.label,
     })
