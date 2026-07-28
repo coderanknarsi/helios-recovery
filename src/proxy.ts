@@ -1,8 +1,32 @@
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import {
+  RESIDENT_SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+} from "@/lib/resident-session";
 
 export async function proxy(request: NextRequest) {
-  return updateSession(request);
+  const response = await updateSession(request);
+
+  // Slide the resident session cookie forward on every page view. Server
+  // components cannot set cookies, so without this the browser cookie would
+  // expire on a fixed schedule and force an unnecessary (paid) SMS sign-in
+  // even for someone who opens the portal daily.
+  //
+  // GET only: server actions are POSTs, and sign-out clears this same cookie
+  // in its own response — re-setting it here would fight that.
+  const token = request.cookies.get(RESIDENT_SESSION_COOKIE)?.value;
+  if (token && request.method === "GET") {
+    response.cookies.set(RESIDENT_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS,
+    });
+  }
+
+  return response;
 }
 
 export const config = {

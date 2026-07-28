@@ -14,9 +14,9 @@ import {
 } from "@/db/schema";
 import {
   RESIDENT_SESSION_COOKIE,
-  hashSessionToken,
   SESSION_TTL_DAYS,
-} from "@/lib/resident-auth";
+} from "@/lib/resident-session";
+import { hashSessionToken } from "@/lib/resident-auth";
 
 export type ResidentAccess = {
   sessionId: string;

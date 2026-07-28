@@ -2,10 +2,8 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  RESIDENT_SESSION_COOKIE,
-  revokeResidentSession,
-} from "@/lib/resident-auth";
+import { RESIDENT_SESSION_COOKIE } from "@/lib/resident-session";
+import { revokeResidentSession } from "@/lib/resident-auth";
 
 export async function signOutResident() {
   const store = await cookies();

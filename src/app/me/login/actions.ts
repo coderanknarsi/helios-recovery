@@ -2,11 +2,8 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  RESIDENT_SESSION_COOKIE,
-  requestResidentCode,
-  verifyResidentCode,
-} from "@/lib/resident-auth";
+import { requestResidentCode, verifyResidentCode } from "@/lib/resident-auth";
+import { RESIDENT_SESSION_COOKIE } from "@/lib/resident-session";
 import { toE164 } from "@/lib/sms";
 
 export type RequestCodeState = {

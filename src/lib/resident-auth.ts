@@ -4,10 +4,8 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { residentOtps, residentSessions, residents } from "@/db/schema";
+import { SESSION_TTL_DAYS } from "@/lib/resident-session";
 import { sendSms, toE164 } from "@/lib/sms";
-
-/** Cookie holding the raw resident session token. */
-export const RESIDENT_SESSION_COOKIE = "helios_resident_session";
 
 /** How long a texted code stays valid. */
 const OTP_TTL_MINUTES = 10;
@@ -16,11 +14,11 @@ const MAX_VERIFY_ATTEMPTS = 5;
 /** Codes a single phone number may request inside SEND_WINDOW_MINUTES. */
 const MAX_SENDS_PER_PHONE = 3;
 const SEND_WINDOW_MINUTES = 15;
+/** Hard daily ceiling per phone. Every code costs money to send. */
+const MAX_SENDS_PER_PHONE_PER_DAY = 6;
 /** Codes a single IP may request inside IP_WINDOW_MINUTES. */
 const MAX_SENDS_PER_IP = 10;
 const IP_WINDOW_MINUTES = 60;
-/** Sliding lifetime of an authenticated session. */
-export const SESSION_TTL_DAYS = 30;
 
 function minutesAgo(minutes: number) {
   return new Date(Date.now() - minutes * 60_000);
@@ -98,7 +96,7 @@ export async function requestResidentCode({
     }
   }
 
-  const [row] = await db
+  const [burst] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(residentOtps)
     .where(
@@ -107,7 +105,20 @@ export async function requestResidentCode({
         gte(residentOtps.createdAt, minutesAgo(SEND_WINDOW_MINUTES)),
       ),
     );
-  if ((row?.n ?? 0) >= MAX_SENDS_PER_PHONE) {
+  if ((burst?.n ?? 0) >= MAX_SENDS_PER_PHONE) {
+    return { ok: false, reason: "rate_limited" };
+  }
+
+  const [daily] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(residentOtps)
+    .where(
+      and(
+        eq(residentOtps.phone, e164),
+        gte(residentOtps.createdAt, minutesAgo(24 * 60)),
+      ),
+    );
+  if ((daily?.n ?? 0) >= MAX_SENDS_PER_PHONE_PER_DAY) {
     return { ok: false, reason: "rate_limited" };
   }
 

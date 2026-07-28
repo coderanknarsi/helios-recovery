@@ -73,6 +73,11 @@ export function ResidentLoginForm() {
           <Button type="submit" size="lg" disabled={verifying} className="w-full">
             {verifying ? "Checking…" : "Sign in"}
           </Button>
+
+          <p className="text-center text-xs text-muted-foreground">
+            You&rsquo;ll stay signed in on this device, so you won&rsquo;t need
+            another code unless you sign out.
+          </p>
         </form>
 
         <form action={requestAction}>
@@ -106,7 +111,8 @@ export function ResidentLoginForm() {
           className={fieldClass}
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Use the number your house has on file. We&rsquo;ll text you a code.
+          Use the number your house has on file. We&rsquo;ll text you a code
+          once, then keep you signed in on this device.
         </p>
       </div>
 
