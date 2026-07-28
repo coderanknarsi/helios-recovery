@@ -15,6 +15,7 @@ import {
   roiConsentType,
 } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
+import { notifyResident } from "@/lib/push";
 import { buildRoiBody, roiIsActive } from "@/lib/roi";
 import { siteConfig } from "@/lib/site";
 
@@ -166,6 +167,16 @@ export async function createRoi(formData: FormData) {
     createdBy: access.profile.id,
   });
 
+  await notifyResident({
+    orgId: access.orgId,
+    residentId,
+    title: "A release needs your signature",
+    body: `A release of information for ${recipientName} is waiting. Nothing is shared until you sign it.`,
+    url: "/me/documents",
+    sentBy: access.profile.id,
+  });
+
+  revalidatePath("/me");
   refresh(residentId);
 }
 

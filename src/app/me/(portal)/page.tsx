@@ -8,11 +8,18 @@ import {
   MapPin,
   Phone,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 import { db } from "@/db";
-import { intakeDocuments, residentLogs } from "@/db/schema";
+import {
+  intakeDocuments,
+  residentLogs,
+  residentNotifications,
+} from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
 import { InstallHint } from "@/components/install-hint";
+import { NotificationSettings } from "@/components/notification-settings";
+import { markNotificationsRead } from "./push-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +116,26 @@ export default async function ResidentHomePage() {
       .limit(10),
   ]);
 
+  const messages = await db
+    .select({
+      id: residentNotifications.id,
+      title: residentNotifications.title,
+      body: residentNotifications.body,
+      createdAt: residentNotifications.createdAt,
+      readAt: residentNotifications.readAt,
+    })
+    .from(residentNotifications)
+    .where(
+      and(
+        eq(residentNotifications.residentId, me.residentId),
+        eq(residentNotifications.orgId, me.orgId),
+      ),
+    )
+    .orderBy(desc(residentNotifications.createdAt))
+    .limit(5);
+
+  const unread = messages.filter((m) => m.readAt === null).length;
+
   const unsigned = docs.filter((d) => d.status !== "signed").length;
   const daysHere = daysSince(me.admitDate);
   const daysSober = daysSince(me.sobrietyDate);
@@ -179,6 +206,65 @@ export default async function ResidentHomePage() {
             />
           )}
         </div>
+      )}
+
+      {messages.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">
+              Messages
+              {unread > 0 && (
+                <span className="ml-2 inline-flex rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {unread} new
+                </span>
+              )}
+            </h2>
+            {unread > 0 && (
+              <form action={markNotificationsRead}>
+                <button
+                  type="submit"
+                  className="text-xs font-medium text-muted-foreground transition hover:text-foreground"
+                >
+                  Mark all read
+                </button>
+              </form>
+            )}
+          </div>
+          <ul className="mt-3 space-y-3">
+            {messages.map((m) => (
+              <li
+                key={m.id}
+                className={`rounded-xl border p-4 shadow-sm ${
+                  m.readAt === null
+                    ? "border-primary/30 bg-primary/5"
+                    : "border-border bg-surface"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <MessageSquare
+                    className={`mt-0.5 h-4 w-4 shrink-0 ${
+                      m.readAt === null ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{m.title}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {m.body}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {m.createdAt.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {updates.length > 0 && (
@@ -259,6 +345,10 @@ export default async function ResidentHomePage() {
           {me.houseManagerPhone ?? me.housePhone}
         </a>
       )}
+
+      <NotificationSettings
+        vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
+      />
 
       <InstallHint />
     </div>

@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { residents, beds, houses, residentLogs } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
+import { notifyResident } from "@/lib/push";
 import { revokeAllResidentSessions } from "@/lib/resident-auth";
 
 function field(formData: FormData, key: string) {
@@ -82,6 +83,30 @@ export async function addLog(formData: FormData) {
     createdBy: access.profile.id,
   });
 
+  refresh(residentId);
+}
+
+/**
+ * Sends a message to a resident's portal and pushes a notification to their
+ * devices. Delivery is best-effort; the message is stored either way.
+ */
+export async function sendResidentMessage(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  const body = field(formData, "body");
+  if (!residentId || !body) return;
+  if (!(await scopedResident(residentId, access))) return;
+
+  await notifyResident({
+    orgId: access.orgId,
+    residentId,
+    title: field(formData, "title") || "Message from your house team",
+    body,
+    url: "/me",
+    sentBy: access.profile.id,
+  });
+
+  revalidatePath("/me");
   refresh(residentId);
 }
 

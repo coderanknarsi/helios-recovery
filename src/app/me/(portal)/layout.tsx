@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LifeBuoy } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { ResidentNav } from "@/components/resident-nav";
+import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { requireResident, touchResidentSession } from "@/lib/resident-access";
 
 export default async function ResidentPortalLayout({
@@ -15,6 +16,7 @@ export default async function ResidentPortalLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-muted/40">
+      <ServiceWorkerRegistrar />
       <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
           <Link href="/me" aria-label="Resident home">

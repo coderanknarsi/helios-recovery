@@ -428,6 +428,58 @@ export const roiDisclosures = pgTable("roi_disclosures", {
 });
 
 /**
+ * A resident's Web Push subscription. One row per browser/device — a resident
+ * who installs the portal on a phone and a tablet has two.
+ *
+ * On iOS, push only works once the portal is installed to the home screen;
+ * Safari tabs cannot subscribe at all.
+ */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  // The push service URL. Unique because re-subscribing returns the same one.
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
+ * A message for a resident. Deliberately stored rather than fire-and-forget:
+ * push delivery is unreliable and a swiped-away notification is gone forever,
+ * so the portal keeps the durable copy and push is only the doorbell.
+ */
+export const residentNotifications = pgTable("resident_notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  // Where tapping the notification should land them.
+  url: text("url").notNull().default("/me"),
+  sentBy: uuid("sent_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
  * NARR-aligned starting text live in src/lib/resident-content.ts.
@@ -521,3 +573,5 @@ export type ContentBlock = typeof contentBlocks.$inferSelect;
 export type ResidentRoi = typeof residentRois.$inferSelect;
 export type RoiDisclosure = typeof roiDisclosures.$inferSelect;
 export type RoiScope = (typeof roiScope.enumValues)[number];
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type ResidentNotification = typeof residentNotifications.$inferSelect;

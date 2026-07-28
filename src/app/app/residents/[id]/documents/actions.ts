@@ -16,6 +16,7 @@ import {
 } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { buildIntakePacket, type DocContext } from "@/lib/intake-templates";
+import { notifyResident } from "@/lib/push";
 import { siteConfig } from "@/lib/site";
 import { sendSms } from "@/lib/sms";
 import { SIGNING_CONSENT } from "@/lib/esign";
@@ -195,6 +196,18 @@ export async function generateIntakePacket(formData: FormData) {
     })),
   );
 
+  await notifyResident({
+    orgId: access.orgId,
+    residentId,
+    title: "Documents ready to sign",
+    body: `You have ${templates.length} document${
+      templates.length === 1 ? "" : "s"
+    } waiting for your signature.`,
+    url: "/me/documents",
+    sentBy: access.profile.id,
+  });
+
+  revalidatePath("/me");
   revalidatePath(`/app/residents/${residentId}`);
 }
 

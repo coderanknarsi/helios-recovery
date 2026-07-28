@@ -28,10 +28,12 @@ import {
   documentTemplates,
   residentSessions,
   residentRois,
+  pushSubscriptions,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { AddLogForm } from "./add-log-form";
+import { MessageForm } from "./message-form";
 import {
   assignBed,
   deleteLog,
@@ -189,6 +191,16 @@ export default async function ResidentDetailPage({
 
   const lastSeen = portalSessions[0]?.lastUsedAt ?? null;
   const canUsePortal = resident.status === "active" && !!resident.phone;
+
+  const pushDevices = await db
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(
+      and(
+        eq(pushSubscriptions.residentId, id),
+        eq(pushSubscriptions.orgId, orgId),
+      ),
+    );
 
   const rois = await db
     .select({
@@ -568,12 +580,28 @@ export default async function ResidentDetailPage({
               </span>{" "}
               with a code texted to {resident.phone}.
             </p>
-            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
+            <dl className="mt-4 grid grid-cols-3 gap-4 text-sm">
               <div>
                 <dt className="text-xs font-medium text-muted-foreground">
                   Signed-in devices
                 </dt>
                 <dd className="mt-0.5 font-medium">{portalSessions.length}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Notifications
+                </dt>
+                <dd className="mt-0.5 font-medium">
+                  {pushDevices.length > 0 ? (
+                    <span className="inline-flex rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+                      On
+                    </span>
+                  ) : (
+                    <span className="inline-flex rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                      Off
+                    </span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs font-medium text-muted-foreground">
@@ -591,6 +619,14 @@ export default async function ResidentDetailPage({
                 </dd>
               </div>
             </dl>
+
+            <div className="mt-4">
+              <MessageForm
+                residentId={resident.id}
+                firstName={resident.firstName}
+                hasDevices={pushDevices.length > 0}
+              />
+            </div>
             {portalSessions.length > 0 && (
               <form action={revokePortalAccess} className="mt-4">
                 <input type="hidden" name="residentId" value={resident.id} />
