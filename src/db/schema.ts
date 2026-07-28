@@ -303,6 +303,56 @@ export const intakeDocuments = pgTable("intake_documents", {
     .notNull(),
 });
 
+/**
+ * A one-time passcode texted to a resident so they can sign in to the resident
+ * portal. Codes are stored hashed, are single-use, and expire quickly.
+ */
+export const residentOtps = pgTable("resident_otps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  /** E.164 number the code was sent to; also used for rate limiting. */
+  phone: text("phone").notNull(),
+  /** SHA-256 of (pepper : residentId : code). The raw code is never stored. */
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  requestIp: text("request_ip"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
+ * An authenticated resident-portal session. Only the SHA-256 hash of the
+ * session token is stored; the raw token lives in an httpOnly cookie.
+ */
+export const residentSessions = pgTable("resident_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export type Organization = typeof organizations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
 export type House = typeof houses.$inferSelect;
@@ -313,3 +363,5 @@ export type ResidentLog = typeof residentLogs.$inferSelect;
 export type HouseAssignment = typeof houseAssignments.$inferSelect;
 export type IntakeDocument = typeof intakeDocuments.$inferSelect;
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
+export type ResidentOtp = typeof residentOtps.$inferSelect;
+export type ResidentSession = typeof residentSessions.$inferSelect;

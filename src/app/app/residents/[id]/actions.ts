@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { residents, beds, houses, residentLogs } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
+import { revokeAllResidentSessions } from "@/lib/resident-auth";
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -169,6 +170,9 @@ export async function dischargeResident(formData: FormData) {
       updatedAt: new Date(),
     })
     .where(eq(residents.id, residentId));
+
+  // Discharge immediately ends any resident portal access.
+  await revokeAllResidentSessions(residentId);
 
   refresh(residentId);
 }
