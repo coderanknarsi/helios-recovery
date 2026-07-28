@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { intakeDocuments, organizations } from "@/db/schema";
+import { intakeDocuments, organizations, residentRois } from "@/db/schema";
 import { SIGNING_CONSENT } from "@/lib/esign";
 import { requireResident } from "@/lib/resident-access";
 import { finalizeSignedDocument } from "@/lib/sign-document";
@@ -94,5 +94,31 @@ export async function signMyDocument(formData: FormData) {
 
   revalidatePath("/me/documents");
   revalidatePath("/me");
+  revalidatePath(`/app/residents/${me.residentId}`);
+}
+
+/**
+ * Revoke a release of information from the portal. Takes effect immediately.
+ * Scoped to the session's resident, so nobody can revoke someone else's.
+ */
+export async function revokeMyRoi(formData: FormData) {
+  const me = await requireResident();
+  const roiId = field(formData, "roiId");
+  if (!roiId) return;
+
+  await db
+    .update(residentRois)
+    .set({ revokedAt: new Date(), revokedByResident: true })
+    .where(
+      and(
+        eq(residentRois.id, roiId),
+        eq(residentRois.residentId, me.residentId),
+        eq(residentRois.orgId, me.orgId),
+        isNull(residentRois.revokedAt),
+      ),
+    );
+
+  revalidatePath("/me/documents");
+  revalidatePath(`/app/residents/${me.residentId}/roi`);
   revalidatePath(`/app/residents/${me.residentId}`);
 }

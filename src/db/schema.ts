@@ -67,12 +67,34 @@ export const intakeDocType = pgEnum("intake_doc_type", [
   "lease_agreement",
   "house_rules",
   "consent",
+  "roi",
   "other",
 ]);
 
 export const intakeDocStatus = pgEnum("intake_doc_status", [
   "pending",
   "signed",
+]);
+
+/** Categories of information a resident can authorize us to disclose. */
+export const roiScope = pgEnum("roi_scope", [
+  "attendance",
+  "drug_tests",
+  "program_status",
+  "financial",
+  "incidents",
+  "discharge_summary",
+]);
+
+/**
+ * `granular` = one named recipient, specific scopes (the safe default).
+ * `tpo` = the broader treatment/payment/operations consent allowed by the 2024
+ * 42 CFR Part 2 final rule. `legal_proceeding` always needs its own consent.
+ */
+export const roiConsentType = pgEnum("roi_consent_type", [
+  "granular",
+  "tpo",
+  "legal_proceeding",
 ]);
 
 export const organizations = pgTable("organizations", {
@@ -323,6 +345,89 @@ export const intakeDocuments = pgTable("intake_documents", {
 });
 
 /**
+ * A resident's authorization to release their information to a named person.
+ *
+ * Two records make up one release: this row (structured, queryable, revocable
+ * — what the app enforces against) and an `intakeDocuments` row of type "roi"
+ * holding the signed PDF, linked by `documentId`. That keeps signing on the
+ * same court-provable pipeline as every other intake document.
+ *
+ * A release is active when `revokedAt IS NULL AND expiresAt > now()`. There is
+ * deliberately no stored "expired" status — deriving it means it can never
+ * drift out of sync.
+ */
+export const residentRois = pgTable("resident_rois", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  documentId: uuid("document_id").references(() => intakeDocuments.id, {
+    onDelete: "set null",
+  }),
+
+  consentType: roiConsentType("consent_type").notNull().default("granular"),
+  recipientName: text("recipient_name").notNull(),
+  recipientRole: text("recipient_role").notNull(),
+  recipientOrganization: text("recipient_organization"),
+  recipientPhone: text("recipient_phone"),
+  recipientEmail: text("recipient_email"),
+
+  scopes: roiScope("scopes").array().notNull(),
+  purpose: text("purpose").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  // True when the resident revoked it themselves from the portal.
+  revokedByResident: boolean("revoked_by_resident").notNull().default(false),
+
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
+ * What was actually disclosed, to whom, and when. The consent proves the
+ * resident authorized a release; this proves what we did with it. Residents
+ * have a right to an accounting of disclosures, and in a dispute this is the
+ * record that protects the operator.
+ */
+export const roiDisclosures = pgTable("roi_disclosures", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  roiId: uuid("roi_id")
+    .notNull()
+    .references(() => residentRois.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+
+  disclosedAt: timestamp("disclosed_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  // How it was shared: phone, email, in person, mail, portal.
+  method: text("method").notNull(),
+  scopes: roiScope("scopes").array().notNull(),
+  summary: text("summary").notNull(),
+  disclosedBy: uuid("disclosed_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
  * NARR-aligned starting text live in src/lib/resident-content.ts.
@@ -413,3 +518,6 @@ export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 export type ResidentOtp = typeof residentOtps.$inferSelect;
 export type ResidentSession = typeof residentSessions.$inferSelect;
 export type ContentBlock = typeof contentBlocks.$inferSelect;
+export type ResidentRoi = typeof residentRois.$inferSelect;
+export type RoiDisclosure = typeof roiDisclosures.$inferSelect;
+export type RoiScope = (typeof roiScope.enumValues)[number];

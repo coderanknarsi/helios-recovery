@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { randomUUID } from "crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   residents,
@@ -106,7 +106,8 @@ export async function generateIntakePacket(formData: FormData) {
   const r = await scopedResidentContext(residentId, access);
   if (!r) return;
 
-  // Don't create duplicates if a packet already exists.
+  // Don't create duplicates if a packet already exists. Releases of
+  // information are created on their own and never count as a packet.
   const existing = await db
     .select({ id: intakeDocuments.id })
     .from(intakeDocuments)
@@ -114,6 +115,7 @@ export async function generateIntakePacket(formData: FormData) {
       and(
         eq(intakeDocuments.residentId, residentId),
         eq(intakeDocuments.orgId, access.orgId),
+        ne(intakeDocuments.type, "roi"),
       ),
     )
     .limit(1);
@@ -277,7 +279,11 @@ export async function signDocument(formData: FormData) {
   revalidatePath(`/app/residents/${residentId}/documents/${docId}`);
 }
 
-/** Delete a resident's intake packet so it can be regenerated (admins only). */
+/**
+ * Delete a resident's intake packet so it can be regenerated (admins only).
+ * Signed releases of information are never touched — destroying a consent
+ * record would destroy the proof that a disclosure was authorized.
+ */
 export async function resetIntakePacket(formData: FormData) {
   const access = await getAccess();
   if (!access.isAdmin) return;
@@ -290,6 +296,7 @@ export async function resetIntakePacket(formData: FormData) {
       and(
         eq(intakeDocuments.residentId, residentId),
         eq(intakeDocuments.orgId, access.orgId),
+        ne(intakeDocuments.type, "roi"),
       ),
     );
 

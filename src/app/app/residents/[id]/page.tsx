@@ -15,6 +15,7 @@ import {
   Eye,
   EyeOff,
   Smartphone,
+  ShieldCheck,
 } from "lucide-react";
 import { db } from "@/db";
 import {
@@ -26,6 +27,7 @@ import {
   intakeDocuments,
   documentTemplates,
   residentSessions,
+  residentRois,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
@@ -187,6 +189,20 @@ export default async function ResidentDetailPage({
 
   const lastSeen = portalSessions[0]?.lastUsedAt ?? null;
   const canUsePortal = resident.status === "active" && !!resident.phone;
+
+  const rois = await db
+    .select({
+      expiresAt: residentRois.expiresAt,
+      revokedAt: residentRois.revokedAt,
+    })
+    .from(residentRois)
+    .where(
+      and(eq(residentRois.residentId, id), eq(residentRois.orgId, orgId)),
+    );
+
+  const activeRois = rois.filter(
+    (r) => r.revokedAt === null && r.expiresAt.getTime() > Date.now(),
+  ).length;
 
   const documents = await db
     .select({
@@ -510,6 +526,25 @@ export default async function ResidentDetailPage({
           </>
         )}
       </div>
+
+      {/* Releases of information */}
+      <Link
+        href={`/app/residents/${resident.id}/roi`}
+        className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-6 shadow-sm transition hover:border-primary"
+      >
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            Releases of information
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {rois.length === 0
+              ? "None on file \u2014 you cannot confirm this resident lives here to anyone."
+              : `${activeRois} active of ${rois.length}. Who may receive what, and a log of what was shared.`}
+          </p>
+        </div>
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+      </Link>
 
       {/* Portal access */}
       <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">

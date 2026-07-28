@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import {
   CheckCircle2,
   Download,
@@ -7,11 +7,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { db } from "@/db";
-import { intakeDocuments } from "@/db/schema";
+import { intakeDocuments, residentRois } from "@/db/schema";
 import { signedDocumentUrl } from "@/lib/documents-storage";
 import { SIGNING_CONSENT } from "@/lib/esign";
+import { roiState, scopeLabel } from "@/lib/roi";
 import { requireResident } from "@/lib/resident-access";
-import { signMyDocument } from "./actions";
+import { revokeMyRoi, signMyDocument } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,35 @@ export default async function ResidentDocumentsPage() {
   );
 
   const signedCount = docs.filter((d) => d.status === "signed").length;
+
+  // Releases the resident has actually signed. Unsigned ones appear above as
+  // documents waiting on them, so listing them here too would be confusing.
+  const releases = (
+    await db
+      .select({
+        id: residentRois.id,
+        recipientName: residentRois.recipientName,
+        recipientRole: residentRois.recipientRole,
+        recipientOrganization: residentRois.recipientOrganization,
+        scopes: residentRois.scopes,
+        purpose: residentRois.purpose,
+        expiresAt: residentRois.expiresAt,
+        revokedAt: residentRois.revokedAt,
+        documentStatus: intakeDocuments.status,
+      })
+      .from(residentRois)
+      .leftJoin(
+        intakeDocuments,
+        eq(residentRois.documentId, intakeDocuments.id),
+      )
+      .where(
+        and(
+          eq(residentRois.residentId, me.residentId),
+          eq(residentRois.orgId, me.orgId),
+        ),
+      )
+      .orderBy(desc(residentRois.createdAt))
+  ).filter((r) => r.documentStatus === "signed");
 
   return (
     <div className="space-y-6">
@@ -205,6 +235,75 @@ export default async function ResidentDocumentsPage() {
           </section>
         );
       })}
+
+      {releases.length > 0 && (
+        <section>
+          <h2 className="text-base font-semibold">
+            Who can get your information
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            You can cancel any of these at any time. It takes effect
+            immediately. Cancelling does not undo anything already shared.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {releases.map((r) => {
+              const state = roiState(r);
+              return (
+                <li
+                  key={r.id}
+                  className="rounded-xl border border-border bg-surface p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{r.recipientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.recipientRole}
+                        {r.recipientOrganization
+                          ? ` · ${r.recipientOrganization}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                        state === "active"
+                          ? "bg-accent/10 text-accent"
+                          : "bg-surface-muted text-muted-foreground"
+                      }`}
+                    >
+                      {state === "active" ? "Active" : state}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {r.scopes.map(scopeLabel).join(" · ")}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {state === "revoked"
+                      ? "You cancelled this."
+                      : `Ends ${r.expiresAt.toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}`}
+                  </p>
+
+                  {state === "active" && (
+                    <form action={revokeMyRoi} className="mt-3">
+                      <input type="hidden" name="roiId" value={r.id} />
+                      <button
+                        type="submit"
+                        className="inline-flex h-9 items-center rounded-lg border border-border px-3.5 text-sm font-medium text-muted-foreground transition hover:border-red-300 hover:text-red-600"
+                      >
+                        Cancel this release
+                      </button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
