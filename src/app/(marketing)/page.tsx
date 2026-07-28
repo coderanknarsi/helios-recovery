@@ -75,6 +75,9 @@ export default function HomePage() {
               living homes where people rebuild their lives — one steady day at a
               time.
             </p>
+            <p className="mx-auto mt-3 max-w-2xl text-sm font-medium text-foreground/80">
+              {siteConfig.location} from our first home at {siteConfig.address}.
+            </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <ButtonLink href="/apply" size="lg">
                 Apply for a Bed

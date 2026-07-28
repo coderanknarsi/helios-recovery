@@ -63,8 +63,11 @@ export default function ContactPage() {
                 <MapPin className="h-5 w-5" />
               </span>
               <div>
-                <dt className="text-sm font-medium">Area</dt>
+                <dt className="text-sm font-medium">Address</dt>
                 <dd className="text-sm text-muted-foreground">
+                  {siteConfig.address}
+                </dd>
+                <dd className="mt-1 text-sm text-muted-foreground">
                   {siteConfig.location}
                 </dd>
               </div>

@@ -42,6 +42,7 @@ export function SiteFooter() {
                 {siteConfig.phone}
               </a>
             </li>
+            <li>{siteConfig.address}</li>
             <li>{siteConfig.location}</li>
           </ul>
         </div>
