@@ -7,6 +7,9 @@ import {
   CalendarClock,
   HomeIcon,
   ArrowRight,
+  MessagesSquare,
+  Compass,
+  Sprout,
 } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { siteConfig } from "@/lib/site";
@@ -48,6 +51,29 @@ const steps = [
     icon: CalendarClock,
     title: "Build Your Routine",
     body: "Meetings, work or school, chores, and check-ins that keep recovery on track.",
+  },
+];
+
+const socialModel = [
+  {
+    icon: Users,
+    title: "Lived experience leads",
+    body: "The most useful guidance usually comes from someone a few steps further down the same road, not from a credential on a wall. Peers who have done this work set the tone here.",
+  },
+  {
+    icon: MessagesSquare,
+    title: "The house belongs to the people in it",
+    body: "Residents take part in house meetings, share the chores, and hold each other to standards they helped set. Accountability from your peers lands differently than accountability handed down from above.",
+  },
+  {
+    icon: Compass,
+    title: "A base, not a bubble",
+    body: "Meetings, sponsors, jobs, service work, family. The point of a stable home is that it makes the rest of life possible again — so we push you outward, not inward.",
+  },
+  {
+    icon: Sprout,
+    title: "Recovery capital compounds",
+    body: "Steady work, mended relationships, a place of your own, a reason to get up. These accumulate quietly, and they are what keeps recovery standing once the structure comes off.",
   },
 ];
 
@@ -135,6 +161,65 @@ export default function HomePage() {
               </p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Social model of recovery */}
+      <section className="border-t border-border">
+        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+          <div className="max-w-3xl">
+            <span className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent">
+              Our approach
+            </span>
+            <h2 className="mt-5 text-3xl font-semibold sm:text-4xl">
+              Built on the social model of recovery
+            </h2>
+            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
+              We follow the social model of recovery — the philosophy the
+              National Alliance for Recovery Residences (NARR) built its
+              standards around. It rests on a plain observation: people tend to
+              get well in the company of other people who are getting well.
+            </p>
+            <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
+              In that model the home itself is what does the work. Not a
+              curriculum, not a clinician, not a schedule imposed from outside —
+              but an environment where sobriety is simply the norm, where the
+              people around you understand precisely what you are up against,
+              and where the ordinary business of daily life becomes practice for
+              living well.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2">
+            {socialModel.map((p) => (
+              <div
+                key={p.title}
+                className="rounded-xl border border-border bg-surface p-7 shadow-sm"
+              >
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <p.icon className="h-5 w-5" />
+                </div>
+                <h3 className="mt-5 text-xl font-semibold">{p.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {p.body}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Being clear about scope matters both ethically and legally. */}
+          <div className="mt-10 rounded-xl border border-border bg-surface-muted/60 p-7">
+            <h3 className="text-lg font-semibold">
+              To be clear about what this is
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              A recovery residence is a place to live, not a treatment program.
+              We do not provide detox, therapy, or medical care, and we do not
+              pretend to. If treatment is what you need right now, tell us and
+              we will help you find it — and there will be a place for you here
+              when you are ready for this part.
+            </p>
+          </div>
         </div>
       </section>
 
