@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
+    "db:push": "drizzle-kit push && node scripts/secure-db.mjs",
+    "db:secure": "node scripts/secure-db.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
