@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Share, Plus, X } from "lucide-react";
+import { Share, MoreVertical, X } from "lucide-react";
 
 const DISMISS_KEY = "helios-install-hint-dismissed";
 
@@ -62,12 +62,16 @@ export function InstallHint() {
           </>
         ) : (
           <>
-            Open your browser menu
-            <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            and choose
+            Open the
+            <MoreVertical className="h-3.5 w-3.5 shrink-0" aria-label="Menu" />
+            menu in Chrome, tap
             <span className="font-medium text-foreground">
-              Add to Home screen
+              Install and create shortcut
             </span>
+            , then choose
+            <span className="font-medium text-foreground">Install</span>
+            &mdash; not
+            <span className="font-medium text-foreground">Create shortcut</span>
             .
           </>
         )}

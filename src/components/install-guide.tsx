@@ -96,17 +96,39 @@ export function InstallGuide() {
                 .
               </span>
             ) : (
-              <span className="flex flex-wrap items-center gap-1.5">
-                Tap the
-                <MoreVertical className="h-4 w-4 shrink-0" aria-label="Menu" />
-                menu in Chrome, then tap
-                <span className="font-medium text-foreground">Install app</span>
-                or
-                <span className="font-medium text-foreground">
-                  Add to Home screen
+              <>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  Tap the
+                  <MoreVertical
+                    className="h-4 w-4 shrink-0"
+                    aria-label="Menu"
+                  />
+                  menu in Chrome, then
+                  <span className="font-medium text-foreground">
+                    Install and create shortcut
+                  </span>
+                  &mdash; older phones say
+                  <span className="font-medium text-foreground">
+                    Install app
+                  </span>
+                  or
+                  <span className="font-medium text-foreground">
+                    Add to Home screen
+                  </span>
+                  .
                 </span>
-                .
-              </span>
+                {/* Chrome offers a lookalike that just reopens the browser. */}
+                <span className="mt-2 block rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                  Then pick{" "}
+                  <span className="font-medium text-foreground">Install</span>,
+                  not{" "}
+                  <span className="font-medium text-foreground">
+                    Create shortcut
+                  </span>{" "}
+                  &mdash; a shortcut just reopens Chrome instead of running like
+                  an app.
+                </span>
+              </>
             )}
           </Step>
 
