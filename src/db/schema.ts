@@ -97,13 +97,29 @@ export const roiConsentType = pgEnum("roi_consent_type", [
   "legal_proceeding",
 ]);
 
+export const eventType = pgEnum("event_type", [
+  "house_meeting",
+  "recovery_support",
+  "life_skills",
+  "chore_day",
+  "outing",
+  "other",
+]);
+
+export const choreStatus = pgEnum("chore_status", [
+  "assigned",
+  "completed",
+  "verified",
+  "missed",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /** Mirrors an auth.users row; id equals the Supabase auth user id. */
 export const profiles = pgTable("profiles", {
@@ -117,7 +133,7 @@ export const profiles = pgTable("profiles", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 export const houses = pgTable("houses", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -146,7 +162,7 @@ export const houses = pgTable("houses", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 export const rooms = pgTable("rooms", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -158,7 +174,7 @@ export const rooms = pgTable("rooms", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 export const beds = pgTable("beds", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -175,7 +191,7 @@ export const beds = pgTable("beds", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 export const residents = pgTable("residents", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -224,7 +240,7 @@ export const residents = pgTable("residents", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /** A timeline entry on a resident: note, drug test, infraction, pass, chore, medication. */
 export const residentLogs = pgTable("resident_logs", {
@@ -253,7 +269,7 @@ export const residentLogs = pgTable("resident_logs", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /** Which houses a staff member / house manager is scoped to. */
 export const houseAssignments = pgTable("house_assignments", {
@@ -270,7 +286,7 @@ export const houseAssignments = pgTable("house_assignments", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * An operator-uploaded document (Lease, House Rules, Consent, or a custom
@@ -295,7 +311,7 @@ export const documentTemplates = pgTable("document_templates", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * A signable intake document generated for a resident (lease, house rules,
@@ -342,7 +358,7 @@ export const intakeDocuments = pgTable("intake_documents", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * A resident's authorization to release their information to a named person.
@@ -392,7 +408,7 @@ export const residentRois = pgTable("resident_rois", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * What was actually disclosed, to whom, and when. The consent proves the
@@ -425,7 +441,7 @@ export const roiDisclosures = pgTable("roi_disclosures", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * A resident's Web Push subscription. One row per browser/device — a resident
@@ -451,7 +467,7 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * A message for a resident. Deliberately stored rather than fire-and-forget:
@@ -477,7 +493,124 @@ export const residentNotifications = pgTable("resident_notifications", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
+
+/**
+ * The standing weekly rhythm of a house — Tuesday house meeting, Thursday
+ * AA at the Alano Club. Stored as day-of-week plus a local wall-clock time
+ * rather than dated rows, so nothing needs regenerating and DST never shifts
+ * a meeting. This is also NARR's required weekly schedule of recovery
+ * support services.
+ */
+export const scheduleItems = pgTable("schedule_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  // Null means it applies to every house in the org.
+  houseId: uuid("house_id").references(() => houses.id, {
+    onDelete: "cascade",
+  }),
+  type: eventType("type").notNull().default("recovery_support"),
+  title: text("title").notNull(),
+  description: text("description"),
+  dayOfWeek: integer("day_of_week").notNull(),
+  // Local wall clock, "HH:MM".
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time"),
+  location: text("location"),
+  mandatory: boolean("mandatory").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/** One-off dated events that sit alongside the standing weekly schedule. */
+export const houseEvents = pgTable("house_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id").references(() => houses.id, {
+    onDelete: "cascade",
+  }),
+  type: eventType("type").notNull().default("other"),
+  title: text("title").notNull(),
+  description: text("description"),
+  eventDate: date("event_date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time"),
+  location: text("location"),
+  mandatory: boolean("mandatory").notNull().default(false),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/** The catalog of recurring jobs in a house. */
+export const chores = pgTable("chores", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id")
+    .notNull()
+    .references(() => houses.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * Who has which chore this week. Residents mark their own work done; staff
+ * verify separately, so "said it was done" and "was checked" stay distinct.
+ */
+export const choreAssignments = pgTable(
+  "chore_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    choreId: uuid("chore_id")
+      .notNull()
+      .references(() => chores.id, { onDelete: "cascade" }),
+    residentId: uuid("resident_id")
+      .notNull()
+      .references(() => residents.id, { onDelete: "cascade" }),
+    // Monday of the week this covers.
+    weekStart: date("week_start").notNull(),
+    dueDate: date("due_date").notNull(),
+    status: choreStatus("status").notNull().default("assigned"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    verifiedBy: uuid("verified_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    note: text("note"),
+    createdBy: uuid("created_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("chore_week_idx").on(t.choreId, t.weekStart)],
+).enableRLS();
 
 /**
  * Editable policy text shown to residents (house rules, resident rights,
@@ -505,7 +638,7 @@ export const contentBlocks = pgTable(
       .notNull(),
   },
   (table) => [uniqueIndex("content_blocks_org_slug_idx").on(table.orgId, table.slug)],
-);
+).enableRLS();
 
 /**
  * A one-time passcode texted to a resident so they can sign in to the resident
@@ -530,7 +663,7 @@ export const residentOtps = pgTable("resident_otps", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 /**
  * An authenticated resident-portal session. Only the SHA-256 hash of the
@@ -555,7 +688,7 @@ export const residentSessions = pgTable("resident_sessions", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 export type Organization = typeof organizations.$inferSelect;
 export type Profile = typeof profiles.$inferSelect;
@@ -575,3 +708,9 @@ export type RoiDisclosure = typeof roiDisclosures.$inferSelect;
 export type RoiScope = (typeof roiScope.enumValues)[number];
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type ResidentNotification = typeof residentNotifications.$inferSelect;
+export type ScheduleItem = typeof scheduleItems.$inferSelect;
+export type HouseEvent = typeof houseEvents.$inferSelect;
+export type Chore = typeof chores.$inferSelect;
+export type ChoreAssignment = typeof choreAssignments.$inferSelect;
+export type EventType = (typeof eventType.enumValues)[number];
+export type ChoreStatus = (typeof choreStatus.enumValues)[number];

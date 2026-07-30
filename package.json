@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push && node scripts/secure-db.mjs",
+    "db:push:force": "drizzle-kit push --force && node scripts/secure-db.mjs",
     "db:secure": "node scripts/secure-db.mjs",
     "db:studio": "drizzle-kit studio"
   },
