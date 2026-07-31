@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   FileText,
   BookOpen,
+  Sun,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -27,6 +28,7 @@ type NavItem = {
 
 const items: NavItem[] = [
   { href: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/app/today", label: "Today", icon: Sun },
   {
     href: "/app/admissions",
     label: "Admissions",
