@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarDays,
   CalendarRange,
+  ClipboardCheck,
   FileText,
   BookOpen,
   UserCog,
@@ -34,6 +35,7 @@ const items: NavItem[] = [
   },
   { href: "/app/residents", label: "Residents", icon: Users },
   { href: "/app/schedule", label: "Schedule", icon: CalendarDays },
+  { href: "/app/chores", label: "Chores", icon: ClipboardCheck },
   { href: "/app/availability", label: "Availability", icon: CalendarRange },
   { href: "/app/property", label: "Property", icon: Building2 },
   {

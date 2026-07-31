@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   FileSignature,
   MapPin,
   Phone,
@@ -12,14 +13,18 @@ import {
 } from "lucide-react";
 import { db } from "@/db";
 import {
+  choreAssignments,
+  chores,
   intakeDocuments,
   residentLogs,
   residentNotifications,
 } from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
+import { todayIso, weekStartIso } from "@/lib/schedule";
 import { InstallHint } from "@/components/install-hint";
 import { NotificationSettings } from "@/components/notification-settings";
 import { markNotificationsRead } from "./push-actions";
+import { setChoreDone } from "./chore-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +141,24 @@ export default async function ResidentHomePage() {
 
   const unread = messages.filter((m) => m.readAt === null).length;
 
+  const myChores = await db
+    .select({
+      id: choreAssignments.id,
+      status: choreAssignments.status,
+      dueDate: choreAssignments.dueDate,
+      name: chores.name,
+      description: chores.description,
+    })
+    .from(choreAssignments)
+    .innerJoin(chores, eq(chores.id, choreAssignments.choreId))
+    .where(
+      and(
+        eq(choreAssignments.residentId, me.residentId),
+        eq(choreAssignments.orgId, me.orgId),
+        eq(choreAssignments.weekStart, weekStartIso(todayIso())),
+      ),
+    );
+
   const unsigned = docs.filter((d) => d.status !== "signed").length;
   const daysHere = daysSince(me.admitDate);
   const daysSober = daysSince(me.sobrietyDate);
@@ -206,6 +229,68 @@ export default async function ResidentHomePage() {
             />
           )}
         </div>
+      )}
+
+      {myChores.length > 0 && (
+        <section>
+          <h2 className="text-base font-semibold">Your chores this week</h2>
+          <ul className="mt-2 space-y-2">
+            {myChores.map((chore) => {
+              const done =
+                chore.status === "completed" || chore.status === "verified";
+              return (
+                <li
+                  key={chore.id}
+                  className={`rounded-xl border p-4 shadow-sm ${
+                    done ? "border-border bg-surface" : "border-primary/30 bg-primary/5"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <ClipboardCheck
+                      className={`mt-0.5 h-5 w-5 shrink-0 ${done ? "text-accent" : "text-primary"}`}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">{chore.name}</p>
+                      {chore.description && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {chore.description}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {chore.status === "verified"
+                          ? "Checked off by your house team."
+                          : chore.status === "missed"
+                            ? "Marked missed."
+                            : `Due ${fmtDay(chore.dueDate)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {chore.status !== "verified" && (
+                    <form action={setChoreDone} className="mt-3">
+                      <input type="hidden" name="id" value={chore.id} />
+                      <input
+                        type="hidden"
+                        name="done"
+                        value={done ? "false" : "true"}
+                      />
+                      <button
+                        type="submit"
+                        className={
+                          done
+                            ? "text-xs font-medium text-muted-foreground transition hover:text-foreground"
+                            : "inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                        }
+                      >
+                        {done ? "Undo" : "Mark it done"}
+                      </button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       {messages.length > 0 && (
