@@ -113,6 +113,26 @@ export const choreStatus = pgEnum("chore_status", [
   "missed",
 ]);
 
+export const exitReason = pgEnum("exit_reason", [
+  "completed_program",
+  "planned_transfer",
+  "left_early",
+  "rule_violation",
+  "substance_use",
+  "overdose",
+  "arrest_incarceration",
+  "medical_behavioral",
+  "death",
+  "other",
+]);
+
+export const exitParticipation = pgEnum("exit_participation", [
+  "none",
+  "low",
+  "moderate",
+  "high",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -613,6 +633,43 @@ export const choreAssignments = pgTable(
 ).enableRLS();
 
 /**
+ * The exit record for a stay. Kept separate from `residents` because it is a
+ * narrative document, not resident attributes, and because how someone left
+ * is the single most useful thing to know when reviewing whether the program
+ * is working. Length of stay is deliberately derived from admit/discharge
+ * dates rather than stored, so correcting an admit date corrects the stat.
+ */
+export const residentExits = pgTable("resident_exits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  exitDate: date("exit_date").notNull(),
+  planned: boolean("planned").notNull().default(false),
+  reason: exitReason("reason").notNull(),
+  reasonDetail: text("reason_detail"),
+  participation: exitParticipation("participation"),
+  progressSummary: text("progress_summary"),
+  /** The resident's own words. Qualitative evidence a funder cannot get elsewhere. */
+  residentStatement: text("resident_statement"),
+  ongoingRecoveryPlan: text("ongoing_recovery_plan"),
+  /** Where they were referred on to — residents have a right to this on exit. */
+  referrals: text("referrals"),
+  forwardingAddress: text("forwarding_address"),
+  forwardingPhone: text("forwarding_phone"),
+  forwardingEmail: text("forwarding_email"),
+  recordedBy: uuid("recorded_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
  * NARR-aligned starting text live in src/lib/resident-content.ts.
@@ -714,3 +771,6 @@ export type Chore = typeof chores.$inferSelect;
 export type ChoreAssignment = typeof choreAssignments.$inferSelect;
 export type EventType = (typeof eventType.enumValues)[number];
 export type ChoreStatus = (typeof choreStatus.enumValues)[number];
+export type ResidentExit = typeof residentExits.$inferSelect;
+export type ExitReason = (typeof exitReason.enumValues)[number];
+export type ExitParticipation = (typeof exitParticipation.enumValues)[number];

@@ -24,21 +24,23 @@ import {
   beds,
   rooms,
   houses,
+  residentExits,
   residentLogs,
   intakeDocuments,
   documentTemplates,
   residentSessions,
   residentRois,
   pushSubscriptions,
+  type ExitReason,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { AddLogForm } from "./add-log-form";
+import { DischargeForm } from "./discharge-form";
 import { MessageForm } from "./message-form";
 import {
   assignBed,
   deleteLog,
-  dischargeResident,
   revokePortalAccess,
   sendPortalInvite,
   setExpectedDeparture,
@@ -51,6 +53,28 @@ import {
 import { EmailLinkForm } from "./documents/email-link-form";
 
 export const metadata: Metadata = { title: "Resident" };
+
+const EXIT_REASON_LABELS: Record<ExitReason, string> = {
+  completed_program: "Completed the program",
+  planned_transfer: "Planned move on or transfer",
+  left_early: "Left early, against advice",
+  rule_violation: "Rule violation",
+  substance_use: "Alcohol or other drug use",
+  overdose: "Overdose",
+  arrest_incarceration: "Arrest or incarceration",
+  medical_behavioral: "Medical or behavioral health need",
+  death: "Death",
+  other: "Other",
+};
+
+/** Whole days between two YYYY-MM-DD dates. */
+function daysBetween(start: string | null, end: string | null) {
+  if (!start || !end) return null;
+  const a = Date.parse(`${start}T00:00:00Z`);
+  const b = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
 
 function fmtDate(value: string | Date | null) {
   if (!value) return "—";
@@ -214,6 +238,20 @@ export default async function ResidentDetailPage({
       and(eq(residentRois.residentId, id), eq(residentRois.orgId, orgId)),
     );
 
+  const [exit] = await db
+    .select()
+    .from(residentExits)
+    .where(
+      and(eq(residentExits.residentId, id), eq(residentExits.orgId, orgId)),
+    )
+    .orderBy(desc(residentExits.exitDate))
+    .limit(1);
+
+  const lengthOfStay = daysBetween(
+    resident.admitDate,
+    exit?.exitDate ?? resident.dischargeDate,
+  );
+
   const activeRois = rois.filter(
     (r) => r.revokedAt === null && r.expiresAt.getTime() > Date.now(),
   ).length;
@@ -305,18 +343,63 @@ export default async function ResidentDetailPage({
             )}
           </div>
         </div>
-        {isActive && (
-          <form action={dischargeResident}>
-            <input type="hidden" name="residentId" value={resident.id} />
-            <button
-              type="submit"
-              className="inline-flex h-9 items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium text-foreground transition hover:bg-surface-muted hover:text-red-600"
-            >
-              Discharge
-            </button>
-          </form>
-        )}
       </div>
+
+      {isActive && (
+        <div className="mt-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
+          <DischargeForm
+            residentId={resident.id}
+            firstName={resident.firstName}
+            today={new Date().toISOString().slice(0, 10)}
+          />
+        </div>
+      )}
+
+      {exit && (
+        <div className="mt-5 rounded-xl border border-border bg-surface p-5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">How this stay ended</h2>
+            <span
+              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                exit.planned
+                  ? "bg-accent/10 text-accent"
+                  : "bg-primary/10 text-primary"
+              }`}
+            >
+              {exit.planned ? "Planned" : "Unplanned"}
+            </span>
+          </div>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Reason</dt>
+              <dd className="font-medium">
+                {EXIT_REASON_LABELS[exit.reason]}
+                {exit.reasonDetail ? ` — ${exit.reasonDetail}` : ""}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Left on</dt>
+              <dd className="font-medium">{exit.exitDate}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Length of stay</dt>
+              <dd className="font-medium">
+                {lengthOfStay === null ? "—" : `${lengthOfStay} days`}
+              </dd>
+            </div>
+          </dl>
+          {exit.residentStatement && (
+            <blockquote className="mt-4 border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">
+              {exit.residentStatement}
+            </blockquote>
+          )}
+          {exit.progressSummary && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {exit.progressSummary}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Bed assignment */}
       <div className="mt-5 rounded-xl border border-border bg-surface p-5 shadow-sm">

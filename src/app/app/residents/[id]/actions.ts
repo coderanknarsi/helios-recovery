@@ -3,7 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { residents, beds, houses, residentLogs } from "@/db/schema";
+import {
+  residents,
+  beds,
+  houses,
+  residentExits,
+  residentLogs,
+  type ExitParticipation,
+  type ExitReason,
+} from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { notifyResident } from "@/lib/push";
 import { revokeAllResidentSessions } from "@/lib/resident-auth";
@@ -28,6 +36,26 @@ const LOG_TYPES = [
   "medication",
 ] as const;
 const RESULTS = ["pass", "fail", "refused", "pending"] as const;
+
+const EXIT_REASONS: ExitReason[] = [
+  "completed_program",
+  "planned_transfer",
+  "left_early",
+  "rule_violation",
+  "substance_use",
+  "overdose",
+  "arrest_incarceration",
+  "medical_behavioral",
+  "death",
+  "other",
+];
+
+const EXIT_PARTICIPATION: ExitParticipation[] = [
+  "none",
+  "low",
+  "moderate",
+  "high",
+];
 
 type LogType = (typeof LOG_TYPES)[number];
 type Result = (typeof RESULTS)[number];
@@ -251,6 +279,18 @@ export async function dischargeResident(formData: FormData) {
 
   const resident = await scopedResident(residentId, access);
   if (!resident) return;
+
+  // How someone left is the point of the record, so it is required.
+  const reason = field(formData, "reason") as ExitReason;
+  if (!EXIT_REASONS.includes(reason)) return;
+
+  const rawParticipation = field(formData, "participation") as ExitParticipation;
+  const participation = EXIT_PARTICIPATION.includes(rawParticipation)
+    ? rawParticipation
+    : null;
+
+  const exitDate = field(formData, "exitDate") || today();
+
   if (resident.bedId) {
     await db
       .update(beds)
@@ -258,11 +298,29 @@ export async function dischargeResident(formData: FormData) {
       .where(eq(beds.id, resident.bedId));
   }
 
+  await db.insert(residentExits).values({
+    orgId: access.orgId,
+    residentId,
+    exitDate,
+    planned: formData.get("planned") === "on",
+    reason,
+    reasonDetail: field(formData, "reasonDetail") || null,
+    participation,
+    progressSummary: field(formData, "progressSummary") || null,
+    residentStatement: field(formData, "residentStatement") || null,
+    ongoingRecoveryPlan: field(formData, "ongoingRecoveryPlan") || null,
+    referrals: field(formData, "referrals") || null,
+    forwardingAddress: field(formData, "forwardingAddress") || null,
+    forwardingPhone: field(formData, "forwardingPhone") || null,
+    forwardingEmail: field(formData, "forwardingEmail") || null,
+    recordedBy: access.profile.id,
+  });
+
   await db
     .update(residents)
     .set({
       status: "discharged",
-      dischargeDate: today(),
+      dischargeDate: exitDate,
       bedId: null,
       updatedAt: new Date(),
     })
