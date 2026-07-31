@@ -1,10 +1,16 @@
 /* Helios Recovery resident portal service worker. */
 
-const CACHE = "helios-v1";
+const CACHE = "helios-v2";
 
 // Pages worth having when there is no signal. House holds naloxone locations
 // and evacuation info; Support holds the crisis numbers.
-const PRECACHE = ["/me", "/me/house", "/me/support", "/manifest.webmanifest"];
+const PRECACHE = [
+  "/me",
+  "/me/schedule",
+  "/me/house",
+  "/me/support",
+  "/manifest.webmanifest",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

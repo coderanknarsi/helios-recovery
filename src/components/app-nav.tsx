@@ -7,6 +7,7 @@ import {
   UserPlus,
   Users,
   Building2,
+  CalendarDays,
   CalendarRange,
   FileText,
   BookOpen,
@@ -32,6 +33,7 @@ const items: NavItem[] = [
     adminOnly: true,
   },
   { href: "/app/residents", label: "Residents", icon: Users },
+  { href: "/app/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/app/availability", label: "Availability", icon: CalendarRange },
   { href: "/app/property", label: "Property", icon: Building2 },
   {

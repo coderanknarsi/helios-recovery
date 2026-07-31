@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, House, LifeBuoy, Sun } from "lucide-react";
+import { CalendarDays, FileText, House, LifeBuoy, Sun } from "lucide-react";
 
 const tabs = [
   { href: "/me", label: "Today", icon: Sun, exact: true },
+  { href: "/me/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/me/documents", label: "Documents", icon: FileText },
   { href: "/me/house", label: "House", icon: House },
   { href: "/me/support", label: "Support", icon: LifeBuoy },
