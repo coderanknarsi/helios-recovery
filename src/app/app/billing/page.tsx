@@ -170,6 +170,20 @@ export default async function BillingPage() {
         </div>
       </div>
 
+      {roster.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-surface p-12 text-center">
+          <h2 className="text-base font-semibold">Nobody to bill yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Rent is worked out from each bed&rsquo;s rate, so residents appear
+            here once they&rsquo;re placed in a bed. Set your rates on{" "}
+            <Link href="/app/property" className="text-primary underline">
+              Property
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+
       {myHouses.map((house) => {
         const people = roster.filter((r) => r.houseId === house.id);
         if (!people.length) return null;

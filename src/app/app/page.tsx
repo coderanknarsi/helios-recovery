@@ -1,10 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { UserPlus, Users, Building2, BedDouble, ArrowRight, ListOrdered } from "lucide-react";
+import {
+  UserPlus,
+  Users,
+  Building2,
+  BedDouble,
+  ArrowRight,
+  ListOrdered,
+  Wallet,
+} from "lucide-react";
 import { db } from "@/db";
-import { residents, houses, beds } from "@/db/schema";
+import { residents, houses, beds, charges, payments } from "@/db/schema";
 import { getAccess } from "@/lib/access";
+import { money, toCents } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -102,6 +111,39 @@ export default async function OverviewPage() {
   const newApplicationsCount = prospects.filter((p) => !p.waitlistedAt).length;
   const waitlistCount = prospects.filter((p) => p.waitlistedAt).length;
 
+  // Outstanding rent across the residents this user can see.
+  const activeIds = active.map((a) => a.id);
+  const [owedRows, paidRows] = activeIds.length
+    ? await Promise.all([
+        db
+          .select({ amount: charges.amount, waivedAt: charges.waivedAt })
+          .from(charges)
+          .where(
+            and(
+              eq(charges.orgId, orgId),
+              inArray(charges.residentId, activeIds),
+            ),
+          ),
+        db
+          .select({ amount: payments.amount })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.orgId, orgId),
+              inArray(payments.residentId, activeIds),
+            ),
+          ),
+      ])
+    : [[], []];
+
+  const outstanding = Math.max(
+    0,
+    owedRows
+      .filter((c) => !c.waivedAt)
+      .reduce((sum, c) => sum + toCents(c.amount), 0) -
+      paidRows.reduce((sum, p) => sum + toCents(p.amount), 0),
+  );
+
   const stats = [
     ...(isAdmin
       ? [
@@ -127,6 +169,16 @@ export default async function OverviewPage() {
       icon: Users,
       href: "/app/residents",
       accent: "text-accent bg-accent/10",
+    },
+    {
+      label: outstanding > 0 ? "Rent outstanding" : "Rent all paid",
+      value: money(outstanding),
+      icon: Wallet,
+      href: "/app/billing",
+      accent:
+        outstanding > 0
+          ? "text-primary bg-primary/10"
+          : "text-accent bg-accent/10",
     },
     {
       label: "Houses",

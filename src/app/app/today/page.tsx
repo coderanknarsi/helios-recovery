@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   FlaskConical,
   Sun,
+  Wallet,
 } from "lucide-react";
 import { db } from "@/db";
 import {
@@ -18,8 +19,11 @@ import {
   houseEvents,
   chores,
   choreAssignments,
+  charges,
+  payments,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
+import { money, toCents } from "@/lib/billing";
 import {
   buildAgenda,
   dayOfWeekIso,
@@ -29,6 +33,7 @@ import {
   EVENT_TYPE_STYLES,
 } from "@/lib/schedule";
 import { recordTestRound, quickNote, verifyChores } from "./actions";
+import { generateWeeklyRent, recordPayment } from "../billing/actions";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -159,6 +164,64 @@ export default async function TodayPage() {
 
   const lastTestBy = new Map(lastTests.map((t) => [t.residentId, t.last]));
 
+  const residentIds = roster.map((r) => r.id);
+  const [rentCharges, rentPayments] = residentIds.length
+    ? await Promise.all([
+        db
+          .select({
+            residentId: charges.residentId,
+            amount: charges.amount,
+            type: charges.type,
+            periodStart: charges.periodStart,
+            waivedAt: charges.waivedAt,
+          })
+          .from(charges)
+          .where(
+            and(
+              eq(charges.orgId, orgId),
+              inArray(charges.residentId, residentIds),
+            ),
+          ),
+        db
+          .select({
+            residentId: payments.residentId,
+            amount: payments.amount,
+          })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.orgId, orgId),
+              inArray(payments.residentId, residentIds),
+            ),
+          ),
+      ])
+    : [[], []];
+
+  const balanceOf = new Map(
+    roster.map((r) => [
+      r.id,
+      rentCharges
+        .filter((c) => c.residentId === r.id && !c.waivedAt)
+        .reduce((sum, c) => sum + toCents(c.amount), 0) -
+        rentPayments
+          .filter((p) => p.residentId === r.id)
+          .reduce((sum, p) => sum + toCents(p.amount), 0),
+    ]),
+  );
+
+  const billedThisWeek = new Set(
+    rentCharges
+      .filter((c) => c.type === "rent" && c.periodStart === weekStart)
+      .map((c) => c.residentId),
+  );
+
+  const owing = roster.filter((r) => (balanceOf.get(r.id) ?? 0) > 0);
+  const totalOwing = owing.reduce(
+    (sum, r) => sum + (balanceOf.get(r.id) ?? 0),
+    0,
+  );
+  const unbilled = roster.filter((r) => !billedThisWeek.has(r.id));
+
   const agenda = buildAgenda({
     from: today,
     days: 1,
@@ -185,6 +248,127 @@ export default async function TodayPage() {
           </p>
         </div>
       </div>
+
+      {roster.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-surface p-12 text-center">
+          <h2 className="text-base font-semibold">No residents yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Once people are placed in beds, rent, drug tests and chores all run
+            from this screen.
+          </p>
+        </div>
+      )}
+
+      {/* Rent — first, because it is due before the week is stayed. */}
+      {roster.length > 0 && (
+        <section
+          className={`rounded-xl border p-6 shadow-sm ${
+            owing.length
+              ? "border-primary/30 bg-primary/5"
+              : "border-border bg-surface"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Wallet
+                className={`h-4 w-4 ${owing.length ? "text-primary" : "text-accent"}`}
+              />
+              <h2 className="text-base font-semibold">
+                {owing.length === 0
+                  ? "Everyone is paid up"
+                  : `${owing.length} owing · ${money(totalOwing)}`}
+              </h2>
+            </div>
+            <Link
+              href="/app/billing"
+              className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-primary"
+            >
+              Rent ledger
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          {unbilled.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+              <span className="text-sm">
+                {unbilled.length} resident
+                {unbilled.length === 1 ? " has" : "s have"} no rent charged for
+                this week.
+              </span>
+              {myHouses.map((house) => (
+                <form key={house.id} action={generateWeeklyRent}>
+                  <input type="hidden" name="houseId" value={house.id} />
+                  <input type="hidden" name="weekStart" value={weekStart} />
+                  <button
+                    type="submit"
+                    className="inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                  >
+                    Bill {myHouses.length > 1 ? house.name : "this week"}
+                  </button>
+                </form>
+              ))}
+            </div>
+          )}
+
+          {owing.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {owing.map((r) => (
+                <li
+                  key={r.id}
+                  className="rounded-lg border border-border bg-surface p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link
+                      href={`/app/residents/${r.id}`}
+                      className="text-sm font-medium hover:text-primary"
+                    >
+                      {r.firstName} {r.lastName}
+                    </Link>
+                    <span className="text-sm font-semibold text-red-700">
+                      {money(balanceOf.get(r.id) ?? 0)}
+                    </span>
+                  </div>
+                  <form
+                    action={recordPayment}
+                    className="mt-2 flex flex-wrap items-end gap-2"
+                  >
+                    <input type="hidden" name="residentId" value={r.id} />
+                    <input type="hidden" name="receivedOn" value={today} />
+                    <input
+                      name="amount"
+                      required
+                      inputMode="decimal"
+                      placeholder="Amount"
+                      defaultValue={(
+                        (balanceOf.get(r.id) ?? 0) / 100
+                      ).toFixed(2)}
+                      className={`${fieldClass} h-10 w-28`}
+                    />
+                    <select name="method" className={`${fieldClass} h-10 w-32`}>
+                      <option value="cash">Cash</option>
+                      <option value="check">Check</option>
+                      <option value="money_order">Money order</option>
+                      <option value="card">Card</option>
+                      <option value="ach">Bank transfer</option>
+                    </select>
+                    <input
+                      name="payerName"
+                      placeholder="Paid by (if not them)"
+                      className={`${fieldClass} h-10 w-44`}
+                    />
+                    <button
+                      type="submit"
+                      className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+                    >
+                      Take payment
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* What's on */}
       <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
