@@ -133,6 +133,24 @@ export const exitParticipation = pgEnum("exit_participation", [
   "high",
 ]);
 
+export const chargeType = pgEnum("charge_type", [
+  "rent",
+  "deposit",
+  "admission_fee",
+  "late_fee",
+  "damage",
+  "other",
+]);
+
+export const paymentMethod = pgEnum("payment_method", [
+  "cash",
+  "check",
+  "money_order",
+  "card",
+  "ach",
+  "other",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -670,6 +688,99 @@ export const residentExits = pgTable("resident_exits", {
 }).enableRLS();
 
 /**
+ * What a resident owes. Rent is generated a week at a time in advance, so the
+ * unique index stops a week being billed twice; non-rent charges carry a null
+ * period and Postgres treats those nulls as distinct, so repeat late fees and
+ * damages are still allowed.
+ */
+export const charges = pgTable(
+  "charges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    residentId: uuid("resident_id")
+      .notNull()
+      .references(() => residents.id, { onDelete: "cascade" }),
+    type: chargeType("type").notNull().default("rent"),
+    description: text("description"),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    dueDate: date("due_date").notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+    waivedAt: timestamp("waived_at", { withTimezone: true }),
+    waivedBy: uuid("waived_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    waivedReason: text("waived_reason"),
+    createdBy: uuid("created_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("charge_period_idx").on(t.residentId, t.type, t.periodStart),
+  ],
+).enableRLS();
+
+/**
+ * Money received. Payments are not allocated to individual charges — the
+ * balance is the difference between the two totals, which is enough for a
+ * house this size and avoids an allocation table nobody would maintain.
+ * `payerName` is null when the resident paid for themselves.
+ */
+export const payments = pgTable("payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  receivedOn: date("received_on").notNull(),
+  method: paymentMethod("method").notNull().default("cash"),
+  payerName: text("payer_name"),
+  /** Check number, transfer reference, or later the Stripe payment intent. */
+  reference: text("reference"),
+  note: text("note"),
+  recordedBy: uuid("recorded_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * A discretionary extension on rent that is normally due before the stay.
+ * Recorded rather than informal so that who granted it, and on what terms, is
+ * answerable later — both for the resident's sake and the house's.
+ */
+export const paymentPromises = pgTable("payment_promises", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  dueBy: date("due_by").notNull(),
+  reason: text("reason"),
+  grantedBy: uuid("granted_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
  * NARR-aligned starting text live in src/lib/resident-content.ts.
@@ -774,3 +885,9 @@ export type ChoreStatus = (typeof choreStatus.enumValues)[number];
 export type ResidentExit = typeof residentExits.$inferSelect;
 export type ExitReason = (typeof exitReason.enumValues)[number];
 export type ExitParticipation = (typeof exitParticipation.enumValues)[number];
+export type Charge = typeof charges.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type PaymentPromise = typeof paymentPromises.$inferSelect;
+export type ChargeType = (typeof chargeType.enumValues)[number];
+export type PaymentMethod = (typeof paymentMethod.enumValues)[number];
+export type RatePeriod = (typeof ratePeriod.enumValues)[number];

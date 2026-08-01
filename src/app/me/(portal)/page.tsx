@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -9,17 +9,22 @@ import {
   MapPin,
   Phone,
   Sparkles,
+  Wallet,
   MessageSquare,
 } from "lucide-react";
 import { db } from "@/db";
 import {
+  charges,
   choreAssignments,
   chores,
   intakeDocuments,
+  payments,
+  paymentPromises,
   residentLogs,
   residentNotifications,
 } from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
+import { money, toCents } from "@/lib/billing";
 import { todayIso, weekStartIso } from "@/lib/schedule";
 import { InstallHint } from "@/components/install-hint";
 import { NotificationSettings } from "@/components/notification-settings";
@@ -163,6 +168,49 @@ export default async function ResidentHomePage() {
   const daysHere = daysSince(me.admitDate);
   const daysSober = daysSince(me.sobrietyDate);
 
+  const [myCharges, myPayments, myPromise] = await Promise.all([
+    db
+      .select({ amount: charges.amount, waivedAt: charges.waivedAt })
+      .from(charges)
+      .where(
+        and(
+          eq(charges.residentId, me.residentId),
+          eq(charges.orgId, me.orgId),
+        ),
+      ),
+    db
+      .select({ amount: payments.amount })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.residentId, me.residentId),
+          eq(payments.orgId, me.orgId),
+        ),
+      ),
+    db
+      .select({
+        amount: paymentPromises.amount,
+        dueBy: paymentPromises.dueBy,
+      })
+      .from(paymentPromises)
+      .where(
+        and(
+          eq(paymentPromises.residentId, me.residentId),
+          eq(paymentPromises.orgId, me.orgId),
+          isNull(paymentPromises.closedAt),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  const balance =
+    myCharges
+      .filter((c) => !c.waivedAt)
+      .reduce((sum, c) => sum + toCents(c.amount), 0) -
+    myPayments.reduce((sum, p) => sum + toCents(p.amount), 0);
+  const hasLedger = myCharges.length > 0 || myPayments.length > 0;
+  const promise = myPromise[0] ?? null;
+
   const placement = me.houseName
     ? [me.houseName, me.roomName, me.bedLabel ? `Bed ${me.bedLabel}` : null]
         .filter(Boolean)
@@ -229,6 +277,44 @@ export default async function ResidentHomePage() {
             />
           )}
         </div>
+      )}
+
+      {hasLedger && (
+        <section>
+          <h2 className="text-base font-semibold">Rent</h2>
+          <div
+            className={`mt-2 rounded-xl border p-4 shadow-sm ${
+              balance > 0
+                ? "border-primary/30 bg-primary/5"
+                : "border-border bg-surface"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Wallet
+                className={`h-5 w-5 shrink-0 ${balance > 0 ? "text-primary" : "text-accent"}`}
+              />
+              <div>
+                <p className="text-sm font-semibold">
+                  {balance > 0
+                    ? `${money(balance)} due`
+                    : balance === 0
+                      ? "You're paid up"
+                      : `${money(-balance)} in credit`}
+                </p>
+                {promise ? (
+                  <p className="text-xs text-muted-foreground">
+                    Agreed with staff: {money(toCents(promise.amount))} by{" "}
+                    {promise.dueBy}.
+                  </p>
+                ) : balance > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Speak to your house manager if this looks wrong.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {myChores.length > 0 && (

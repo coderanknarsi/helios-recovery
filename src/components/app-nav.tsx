@@ -14,6 +14,7 @@ import {
   BookOpen,
   Sun,
   UserCog,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ const items: NavItem[] = [
   { href: "/app/residents", label: "Residents", icon: Users },
   { href: "/app/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/app/chores", label: "Chores", icon: ClipboardCheck },
+  { href: "/app/billing", label: "Rent", icon: Wallet },
   { href: "/app/availability", label: "Availability", icon: CalendarRange },
   { href: "/app/property", label: "Property", icon: Building2 },
   {
