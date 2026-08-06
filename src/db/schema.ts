@@ -103,7 +103,28 @@ export const eventType = pgEnum("event_type", [
   "life_skills",
   "chore_day",
   "outing",
+  // Fire and severe-weather drills have to be run on a schedule and evidenced.
+  "safety_drill",
+  "facility_inspection",
   "other",
+]);
+
+/** What a grievance is about. Drives who is allowed to see it. */
+export const grievanceAbout = pgEnum("grievance_about", [
+  "peer",
+  "staff",
+  "facility",
+  "policy",
+  "other",
+]);
+
+export const grievanceStatus = pgEnum("grievance_status", [
+  "submitted",
+  "under_review",
+  "resolved",
+  // The resident took it past us, to the NARR affiliate or a funder.
+  "escalated",
+  "withdrawn",
 ]);
 
 export const choreStatus = pgEnum("chore_status", [
@@ -781,6 +802,76 @@ export const paymentPromises = pgTable("payment_promises", {
 }).enableRLS();
 
 /**
+ * A concern raised by a resident. We publish a policy promising these get heard
+ * without retaliation, so the mechanism has to exist and has to be auditable.
+ *
+ * residentId is nullable on purpose: the published policy accepts anonymous
+ * complaints, and a resident who is frightened enough to stay anonymous is
+ * exactly the one we most need to hear from.
+ */
+export const grievances = pgTable("grievances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id").references(() => houses.id, {
+    onDelete: "set null",
+  }),
+  residentId: uuid("resident_id").references(() => residents.id, {
+    onDelete: "set null",
+  }),
+  about: grievanceAbout("about").notNull(),
+  subject: text("subject").notNull(),
+  detail: text("detail").notNull(),
+  status: grievanceStatus("status").notNull().default("submitted"),
+  /**
+   * Hides the grievance from house managers so it is only ever visible to
+   * owners and directors. Always set for complaints about staff — routing a
+   * complaint to the person it names is how a grievance process fails.
+   */
+  adminOnly: boolean("admin_only").notNull().default(false),
+  assignedTo: uuid("assigned_to").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: uuid("resolved_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * Append-only trail of what was done about a grievance. Separate from the
+ * grievance itself so the handling history cannot be quietly rewritten later.
+ */
+export const grievanceUpdates = pgTable("grievance_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  grievanceId: uuid("grievance_id")
+    .notNull()
+    .references(() => grievances.id, { onDelete: "cascade" }),
+  /** Status the grievance moved to with this update, if it moved. */
+  status: grievanceStatus("status"),
+  note: text("note").notNull(),
+  /** Off by default; staff choose what the resident sees. */
+  visibleToResident: boolean("visible_to_resident").notNull().default(false),
+  authorId: uuid("author_id").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
  * NARR-aligned starting text live in src/lib/resident-content.ts.
@@ -891,3 +982,7 @@ export type PaymentPromise = typeof paymentPromises.$inferSelect;
 export type ChargeType = (typeof chargeType.enumValues)[number];
 export type PaymentMethod = (typeof paymentMethod.enumValues)[number];
 export type RatePeriod = (typeof ratePeriod.enumValues)[number];
+export type Grievance = typeof grievances.$inferSelect;
+export type GrievanceUpdate = typeof grievanceUpdates.$inferSelect;
+export type GrievanceAbout = (typeof grievanceAbout.enumValues)[number];
+export type GrievanceStatus = (typeof grievanceStatus.enumValues)[number];

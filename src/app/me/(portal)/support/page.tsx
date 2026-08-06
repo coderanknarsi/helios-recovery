@@ -1,7 +1,16 @@
 import { AlertTriangle, MessageSquare, Phone } from "lucide-react";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { grievances, grievanceUpdates } from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
+import {
+  GRIEVANCE_ABOUT_LABELS,
+  GRIEVANCE_STATUS_LABELS,
+  GRIEVANCE_STATUS_STYLES,
+} from "@/lib/grievances";
 import { siteConfig } from "@/lib/site";
 import { signOutResident } from "../../actions";
+import { GrievanceForm } from "./grievance-form";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +56,45 @@ const crisisResources: Resource[] = [
 
 export default async function ResidentSupportPage() {
   const me = await requireResident();
+
+  const mine = await db
+    .select({
+      id: grievances.id,
+      about: grievances.about,
+      subject: grievances.subject,
+      status: grievances.status,
+      resolution: grievances.resolution,
+      createdAt: grievances.createdAt,
+    })
+    .from(grievances)
+    .where(
+      and(
+        eq(grievances.residentId, me.residentId),
+        eq(grievances.orgId, me.orgId),
+      ),
+    )
+    .orderBy(desc(grievances.createdAt));
+
+  const updates = mine.length
+    ? await db
+        .select({
+          grievanceId: grievanceUpdates.grievanceId,
+          note: grievanceUpdates.note,
+          createdAt: grievanceUpdates.createdAt,
+        })
+        .from(grievanceUpdates)
+        .where(eq(grievanceUpdates.visibleToResident, true))
+        .orderBy(asc(grievanceUpdates.createdAt))
+    : [];
+
+  const mineIds = new Set(mine.map((g) => g.id));
+  const updatesFor = new Map<string, typeof updates>();
+  for (const u of updates) {
+    if (!mineIds.has(u.grievanceId)) continue;
+    const list = updatesFor.get(u.grievanceId) ?? [];
+    list.push(u);
+    updatesFor.set(u.grievanceId, list);
+  }
 
   return (
     <div className="space-y-6">
@@ -96,6 +144,69 @@ export default async function ResidentSupportPage() {
           );
         })}
       </section>
+
+      <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+        <h2 className="text-base font-semibold">Raise a concern</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Something wrong with the house, a rule, a staff member, or someone you
+          live with? Tell us. Raising a concern is never a rule violation.
+        </p>
+        <GrievanceForm />
+      </section>
+
+      {mine.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold">Concerns you&rsquo;ve raised</h2>
+          {mine.map((g) => {
+            const notes = updatesFor.get(g.id) ?? [];
+            return (
+              <div
+                key={g.id}
+                className="rounded-xl border border-border bg-surface p-5 shadow-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{g.subject}</p>
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${GRIEVANCE_STATUS_STYLES[g.status]}`}
+                  >
+                    {GRIEVANCE_STATUS_LABELS[g.status]}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {GRIEVANCE_ABOUT_LABELS[g.about]} &middot; raised{" "}
+                  {g.createdAt.toLocaleDateString()}
+                </p>
+
+                {notes.length > 0 && (
+                  <ul className="mt-3 space-y-2 border-t border-border pt-3">
+                    {notes.map((n, i) => (
+                      <li key={i} className="text-sm">
+                        <span className="text-xs text-muted-foreground">
+                          {n.createdAt.toLocaleDateString()}
+                        </span>
+                        <span className="mt-0.5 block">{n.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {g.resolution && (
+                  <div className="mt-3 rounded-lg bg-surface-muted p-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Outcome
+                    </p>
+                    <p className="mt-1 text-sm">{g.resolution}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-xs text-muted-foreground">
+            Not satisfied with how something was handled? You can take it to our
+            accrediting body without going through us first.
+          </p>
+        </section>
+      )}
 
       <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
         <h2 className="text-base font-semibold">Your house team</h2>

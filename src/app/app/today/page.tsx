@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   FlaskConical,
+  MessagesSquare,
   Sun,
   Wallet,
 } from "lucide-react";
@@ -21,9 +22,11 @@ import {
   choreAssignments,
   charges,
   payments,
+  grievances,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { money, toCents } from "@/lib/billing";
+import { OPEN_GRIEVANCE_STATUSES } from "@/lib/grievances";
 import {
   buildAgenda,
   dayOfWeekIso,
@@ -231,6 +234,20 @@ export default async function TodayPage() {
 
   const awaitingCheck = weekChores.filter((c) => c.status === "completed");
 
+  const openConcerns = await db
+    .select({ id: grievances.id })
+    .from(grievances)
+    .where(
+      and(
+        eq(grievances.orgId, access.orgId),
+        inArray(grievances.status, OPEN_GRIEVANCE_STATUSES),
+        access.isAdmin ? undefined : eq(grievances.adminOnly, false),
+        access.isAdmin || !access.houseIds?.length
+          ? undefined
+          : inArray(grievances.houseId, access.houseIds),
+      ),
+    );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -248,6 +265,25 @@ export default async function TodayPage() {
           </p>
         </div>
       </div>
+
+      {openConcerns.length > 0 && (
+        <Link
+          href="/app/grievances"
+          className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 transition hover:bg-red-100"
+        >
+          <MessagesSquare className="h-5 w-5 shrink-0 text-red-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-red-700">
+              {openConcerns.length} open{" "}
+              {openConcerns.length === 1 ? "concern" : "concerns"}
+            </p>
+            <p className="text-xs text-red-700/80">
+              A grievance sitting untouched is the thing an auditor will find.
+            </p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-red-600" />
+        </Link>
+      )}
 
       {roster.length === 0 && (
         <div className="rounded-xl border border-dashed border-border bg-surface p-12 text-center">

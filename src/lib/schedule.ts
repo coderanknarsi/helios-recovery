@@ -26,6 +26,8 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   life_skills: "Life skills",
   chore_day: "Chore day",
   outing: "Outing",
+  safety_drill: "Safety drill",
+  facility_inspection: "Inspection",
   other: "Other",
 };
 
@@ -36,6 +38,8 @@ export const EVENT_TYPE_STYLES: Record<EventType, string> = {
   life_skills: "bg-accent/10 text-accent",
   chore_day: "bg-primary/10 text-primary",
   outing: "bg-surface-muted text-muted-foreground",
+  safety_drill: "bg-red-100 text-red-700",
+  facility_inspection: "bg-red-100 text-red-700",
   other: "bg-surface-muted text-muted-foreground",
 };
 

@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   FileText,
   LayoutDashboard,
+  MessagesSquare,
   Sun,
   UserCog,
   UserPlus,
@@ -72,6 +73,12 @@ export const navGroups: NavGroup[] = [
         label: "Chores",
         icon: ClipboardCheck,
         description: "This week's assignments",
+      },
+      {
+        href: "/app/grievances",
+        label: "Concerns",
+        icon: MessagesSquare,
+        description: "Grievances residents have raised",
       },
       {
         href: "/app/schedule",
