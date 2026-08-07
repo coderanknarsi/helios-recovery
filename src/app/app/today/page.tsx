@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   ChevronRight,
   ClipboardCheck,
   FlaskConical,
   MessagesSquare,
+  Siren,
   Sun,
   Wallet,
 } from "lucide-react";
@@ -23,10 +24,13 @@ import {
   charges,
   payments,
   grievances,
+  safetyDrills,
+  type DrillType,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { money, toCents } from "@/lib/billing";
 import { OPEN_GRIEVANCE_STATUSES } from "@/lib/grievances";
+import { overdueDrills } from "@/lib/drills";
 import {
   buildAgenda,
   dayOfWeekIso,
@@ -248,6 +252,28 @@ export default async function TodayPage() {
       ),
     );
 
+  const drillRows = houseIds.length
+    ? await db
+        .select({
+          houseId: safetyDrills.houseId,
+          type: safetyDrills.type,
+          conductedOn: safetyDrills.conductedOn,
+        })
+        .from(safetyDrills)
+        .where(inArray(safetyDrills.houseId, houseIds))
+        .orderBy(desc(safetyDrills.conductedOn))
+    : [];
+
+  const housesNeedingDrills = houseIds.filter((id) => {
+    const lastByType = new Map<DrillType, string>();
+    for (const d of drillRows) {
+      if (d.houseId === id && !lastByType.has(d.type)) {
+        lastByType.set(d.type, d.conductedOn);
+      }
+    }
+    return overdueDrills(lastByType, today).length > 0;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -282,6 +308,26 @@ export default async function TodayPage() {
             </p>
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-red-600" />
+        </Link>
+      )}
+
+      {housesNeedingDrills.length > 0 && (
+        <Link
+          href="/app/drills"
+          className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 shadow-sm transition hover:border-primary"
+        >
+          <Siren className="h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">
+              {housesNeedingDrills.length === 1
+                ? "A house is due a safety drill"
+                : `${housesNeedingDrills.length} houses are due a safety drill`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Fifteen minutes now, versus explaining the gap at certification.
+            </p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
         </Link>
       )}
 

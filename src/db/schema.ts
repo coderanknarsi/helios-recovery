@@ -127,6 +127,24 @@ export const grievanceStatus = pgEnum("grievance_status", [
   "withdrawn",
 ]);
 
+export const drillType = pgEnum("drill_type", [
+  "fire_evacuation",
+  "severe_weather",
+  "overdose_response",
+  "other",
+]);
+
+/**
+ * No excused/unexcused split. A drill is a safety exercise, not a disciplinary
+ * one, and what matters for compliance is whether everyone eventually got the
+ * information — hence `briefed_later` rather than a second flavour of absent.
+ */
+export const drillAttendance = pgEnum("drill_attendance", [
+  "present",
+  "absent",
+  "briefed_later",
+]);
+
 export const choreStatus = pgEnum("chore_status", [
   "assigned",
   "completed",
@@ -871,6 +889,48 @@ export const grievanceUpdates = pgTable("grievance_updates", {
     .notNull(),
 }).enableRLS();
 
+/** Evidence that an emergency drill happened. Logged after the fact, so a date. */
+export const safetyDrills = pgTable("safety_drills", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  houseId: uuid("house_id")
+    .notNull()
+    .references(() => houses.id, { onDelete: "cascade" }),
+  type: drillType("type").notNull(),
+  conductedOn: date("conducted_on").notNull(),
+  /** Null for drills with nothing to evacuate, like naloxone response. */
+  evacuationSeconds: integer("evacuation_seconds"),
+  notes: text("notes"),
+  // Nullable so the record outlives the staff member who ran it.
+  conductedBy: uuid("conducted_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+export const safetyDrillAttendees = pgTable(
+  "safety_drill_attendees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    drillId: uuid("drill_id")
+      .notNull()
+      .references(() => safetyDrills.id, { onDelete: "cascade" }),
+    residentId: uuid("resident_id")
+      .notNull()
+      .references(() => residents.id, { onDelete: "cascade" }),
+    status: drillAttendance("status").notNull().default("present"),
+    note: text("note"),
+  },
+  (t) => [uniqueIndex("drill_attendee_idx").on(t.drillId, t.residentId)],
+).enableRLS();
+
 /**
  * Editable policy text shown to residents (house rules, resident rights,
  * grievance procedure, etc.). One row per org per slug; the slug catalog and
@@ -986,3 +1046,7 @@ export type Grievance = typeof grievances.$inferSelect;
 export type GrievanceUpdate = typeof grievanceUpdates.$inferSelect;
 export type GrievanceAbout = (typeof grievanceAbout.enumValues)[number];
 export type GrievanceStatus = (typeof grievanceStatus.enumValues)[number];
+export type SafetyDrill = typeof safetyDrills.$inferSelect;
+export type SafetyDrillAttendee = typeof safetyDrillAttendees.$inferSelect;
+export type DrillType = (typeof drillType.enumValues)[number];
+export type DrillAttendance = (typeof drillAttendance.enumValues)[number];
