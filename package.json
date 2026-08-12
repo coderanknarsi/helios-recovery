@@ -11,7 +11,9 @@
     "db:push": "drizzle-kit push && node scripts/secure-db.mjs",
     "db:push:force": "drizzle-kit push --force && node scripts/secure-db.mjs",
     "db:secure": "node scripts/secure-db.mjs",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "secrets:check": "node scripts/check-secrets.mjs",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
