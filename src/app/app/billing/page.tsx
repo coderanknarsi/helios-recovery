@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { Wallet, HandCoins, AlertTriangle } from "lucide-react";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { Wallet, HandCoins, AlertTriangle, Link2 } from "lucide-react";
 import { db } from "@/db";
 import {
   residents,
@@ -9,10 +9,13 @@ import {
   houses,
   charges,
   payments,
+  paymentLinks,
   paymentPromises,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { residentsWithSignedFeeSchedule } from "@/lib/fee-schedule";
+import { defaultLinkLabel } from "@/lib/payment-links";
+import { siteConfig } from "@/lib/site";
 import {
   CHARGE_TYPE_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -24,10 +27,12 @@ import { addDaysIso, fmtDateLabel, todayIso, weekStartIso } from "@/lib/schedule
 import {
   addCharge,
   closePromise,
+  createPaymentLink,
   deleteCharge,
   generateWeeklyRent,
   grantPromise,
   recordPayment,
+  revokePaymentLink,
   waiveCharge,
 } from "./actions";
 
@@ -136,6 +141,24 @@ export default async function BillingPage() {
     ),
   );
 
+  const activeLinks = residentIds.length
+    ? await db
+        .select()
+        .from(paymentLinks)
+        .where(
+          and(
+            eq(paymentLinks.orgId, orgId),
+            inArray(paymentLinks.residentId, residentIds),
+            isNull(paymentLinks.revokedAt),
+            or(
+              isNull(paymentLinks.expiresAt),
+              gt(paymentLinks.expiresAt, new Date()),
+            ),
+          ),
+        )
+        .orderBy(desc(paymentLinks.createdAt))
+    : [];
+
   const summary = new Map(
     roster.map((r) => {
       const owed = allCharges
@@ -233,6 +256,7 @@ export default async function BillingPage() {
                 const s = summary.get(r.id)!;
                 const weekly = weeklyCents(r.rate, r.period);
                 const behind = s.balance > 0;
+                const links = activeLinks.filter((l) => l.residentId === r.id);
 
                 return (
                   <li
@@ -377,6 +401,124 @@ export default async function BillingPage() {
                             Save payment
                           </button>
                         </div>
+                        </form>
+                      </details>
+                    )}
+
+                    {canTakeMoney.has(r.id) && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">
+                          Card payment links
+                          {links.length > 0 && ` (${links.length})`}
+                        </summary>
+
+                        {links.length > 0 && (
+                          <ul className="mt-3 space-y-2">
+                            {links.map((l) => (
+                              <li
+                                key={l.id}
+                                className="rounded-lg border border-border bg-surface-muted/50 p-3"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                  <span className="text-xs font-medium">
+                                    {l.label}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {l.amount
+                                      ? money(toCents(l.amount))
+                                      : "payer chooses"}
+                                  </span>
+                                  {l.thirdParty && (
+                                    <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                                      Third party
+                                    </span>
+                                  )}
+                                  <form
+                                    action={revokePaymentLink}
+                                    className="ml-auto"
+                                  >
+                                    <input
+                                      type="hidden"
+                                      name="linkId"
+                                      value={l.id}
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="text-xs font-medium text-muted-foreground underline hover:text-red-700"
+                                    >
+                                      Revoke
+                                    </button>
+                                  </form>
+                                </div>
+                                <input
+                                  readOnly
+                                  value={`${siteConfig.url}/pay/${l.token}`}
+                                  className="mt-2 w-full rounded border border-border bg-surface px-2 py-1 font-mono text-xs text-muted-foreground"
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        <form
+                          action={createPaymentLink}
+                          className="mt-3 grid gap-3 sm:grid-cols-4"
+                        >
+                          <input type="hidden" name="residentId" value={r.id} />
+                          <label className="block text-sm">
+                            <span className="font-medium">
+                              Amount{" "}
+                              <span className="font-normal text-muted-foreground">
+                                (blank = payer chooses)
+                              </span>
+                            </span>
+                            <input
+                              name="amount"
+                              inputMode="decimal"
+                              placeholder={
+                                s.balance > 0
+                                  ? (s.balance / 100).toFixed(2)
+                                  : "200"
+                              }
+                              className={fieldClass}
+                            />
+                          </label>
+                          <label className="block text-sm sm:col-span-2">
+                            <span className="font-medium">
+                              What the payer sees
+                            </span>
+                            <input
+                              name="label"
+                              placeholder={defaultLinkLabel(
+                                r.firstName,
+                                r.lastName,
+                                r.id,
+                              )}
+                              className={fieldClass}
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                            <input
+                              type="checkbox"
+                              name="thirdParty"
+                              className="h-4 w-4 shrink-0 rounded border-border text-primary focus:ring-ring/40"
+                            />
+                            <span>For a CBO or nonprofit</span>
+                          </label>
+                          <div className="sm:col-span-4">
+                            <button
+                              type="submit"
+                              className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium transition hover:border-primary hover:text-primary"
+                            >
+                              Create link
+                            </button>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Anyone holding the link can see the label, so leave
+                              it as initials unless {r.firstName} has agreed to be
+                              named. Links stop working after 30 days.
+                            </p>
+                          </div>
                         </form>
                       </details>
                     )}

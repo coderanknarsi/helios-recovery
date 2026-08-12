@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -9,6 +10,7 @@ import {
   houses,
   charges,
   payments,
+  paymentLinks,
   paymentPromises,
   type ChargeType,
   type PaymentMethod,
@@ -16,6 +18,7 @@ import {
 import { getAccess, type Access } from "@/lib/access";
 import { fromCents, parseAmount, weeklyCents } from "@/lib/billing";
 import { canAcceptPayment } from "@/lib/fee-schedule";
+import { defaultLinkLabel } from "@/lib/payment-links";
 import { addDaysIso, todayIso, weekStartIso } from "@/lib/schedule";
 
 const CHARGE_TYPES: ChargeType[] = [
@@ -51,7 +54,12 @@ function refresh(residentId?: string) {
 /** Confirms the resident is in this org and in a house the user can manage. */
 async function scopedResident(residentId: string, access: Access) {
   const [row] = await db
-    .select({ id: residents.id, houseId: beds.houseId })
+    .select({
+      id: residents.id,
+      firstName: residents.firstName,
+      lastName: residents.lastName,
+      houseId: beds.houseId,
+    })
     .from(residents)
     .leftJoin(beds, eq(residents.bedId, beds.id))
     .where(and(eq(residents.id, residentId), eq(residents.orgId, access.orgId)))
@@ -255,5 +263,61 @@ export async function deleteCharge(formData: FormData) {
   if (!row || !(await scopedResident(row.residentId, access))) return;
 
   await db.delete(charges).where(eq(charges.id, chargeId));
+  refresh(row.residentId);
+}
+
+/**
+ * Mints a card-payment link. Gated on the fee schedule for the same reason
+ * recordPayment is: this is the moment money starts moving.
+ */
+export async function createPaymentLink(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return;
+
+  const resident = await scopedResident(residentId, access);
+  if (!resident) return;
+  if (!(await canAcceptPayment(residentId, access.orgId))) return;
+
+  const cents = parseAmount(field(formData, "amount"));
+  const thirdParty = field(formData, "thirdParty") === "on";
+  const label =
+    field(formData, "label") ||
+    defaultLinkLabel(resident.firstName, resident.lastName, residentId);
+
+  const expires = new Date();
+  expires.setDate(expires.getDate() + 30);
+
+  await db.insert(paymentLinks).values({
+    orgId: access.orgId,
+    residentId,
+    token: randomBytes(24).toString("base64url"),
+    amount: cents ? fromCents(cents) : null,
+    label,
+    thirdParty,
+    expiresAt: expires,
+    createdBy: access.profile.id,
+  });
+
+  refresh(residentId);
+}
+
+export async function revokePaymentLink(formData: FormData) {
+  const access = await getAccess();
+  const linkId = field(formData, "linkId");
+  if (!linkId) return;
+
+  const [row] = await db
+    .select({ residentId: paymentLinks.residentId })
+    .from(paymentLinks)
+    .where(and(eq(paymentLinks.id, linkId), eq(paymentLinks.orgId, access.orgId)))
+    .limit(1);
+  if (!row || !(await scopedResident(row.residentId, access))) return;
+
+  await db
+    .update(paymentLinks)
+    .set({ revokedAt: new Date() })
+    .where(eq(paymentLinks.id, linkId));
+
   refresh(row.residentId);
 }

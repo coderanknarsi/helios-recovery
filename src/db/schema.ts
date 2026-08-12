@@ -788,7 +788,41 @@ export const payments = pgTable("payments", {
   /** Check number, transfer reference, or later the Stripe payment intent. */
   reference: text("reference"),
   note: text("note"),
+  /** Unique so a replayed Stripe webhook cannot double-credit an account. */
+  stripeSessionId: text("stripe_session_id").unique(),
   recordedBy: uuid("recorded_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * A shareable link that lets a resident, or a CBO paying on their behalf, settle
+ * rent by card without an account.
+ *
+ * The token is the only credential, so the page it opens must never name the
+ * resident — a URL that says who lives in a recovery residence is a disclosure.
+ * `label` is what the payer sees, and staff choose it deliberately.
+ */
+export const paymentLinks = pgTable("payment_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  /** Null lets the payer choose, which is what a CBO covering part of a week needs. */
+  amount: numeric("amount", { precision: 10, scale: 2 }),
+  label: text("label").notNull(),
+  /** Third-party links require the payer to name themselves (Standard 3d). */
+  thirdParty: boolean("third_party").notNull().default(false),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => profiles.id, {
     onDelete: "set null",
   }),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -1041,6 +1075,7 @@ export type ExitParticipation = (typeof exitParticipation.enumValues)[number];
 export type Charge = typeof charges.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type PaymentPromise = typeof paymentPromises.$inferSelect;
+export type PaymentLink = typeof paymentLinks.$inferSelect;
 export type ChargeType = (typeof chargeType.enumValues)[number];
 export type PaymentMethod = (typeof paymentMethod.enumValues)[number];
 export type RatePeriod = (typeof ratePeriod.enumValues)[number];
