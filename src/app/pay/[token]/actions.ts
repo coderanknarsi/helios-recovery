@@ -56,6 +56,8 @@ export async function startCheckout(formData: FormData) {
   const origin = await currentOrigin();
   const session = await requireStripe().checkout.sessions.create({
     mode: "payment",
+    // Tags these sessions in the Dashboard so rent is separable from anything later.
+    integration_identifier: "helios-rent-wnbtxqvh",
     line_items: [
       {
         quantity: 1,
