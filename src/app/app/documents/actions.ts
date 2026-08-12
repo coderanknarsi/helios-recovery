@@ -15,6 +15,7 @@ function field(formData: FormData, key: string) {
 
 const DOC_TYPES: IntakeDocument["type"][] = [
   "lease_agreement",
+  "fee_schedule",
   "house_rules",
   "consent",
   "other",

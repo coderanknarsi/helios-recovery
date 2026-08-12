@@ -11,6 +11,7 @@ export const metadata: Metadata = { title: "Documents" };
 
 const TYPE_LABELS: Record<string, string> = {
   lease_agreement: "Lease agreement",
+  fee_schedule: "Fee schedule",
   house_rules: "House rules",
   consent: "Consent form",
   other: "Other",

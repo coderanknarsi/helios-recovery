@@ -66,6 +66,8 @@ export const drugTestResult = pgEnum("drug_test_result", [
 export const intakeDocType = pgEnum("intake_doc_type", [
   "lease_agreement",
   "house_rules",
+  // Standard 3a: all fees, in writing and signed, before any money is taken.
+  "fee_schedule",
   "consent",
   "roi",
   "other",

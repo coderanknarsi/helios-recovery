@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { getAccess, type Access } from "@/lib/access";
 import { fromCents, parseAmount, weeklyCents } from "@/lib/billing";
+import { canAcceptPayment } from "@/lib/fee-schedule";
 import { addDaysIso, todayIso, weekStartIso } from "@/lib/schedule";
 
 const CHARGE_TYPES: ChargeType[] = [
@@ -146,6 +147,9 @@ export async function recordPayment(formData: FormData) {
   const access = await getAccess();
   const residentId = field(formData, "residentId");
   if (!residentId || !(await scopedResident(residentId, access))) return;
+
+  // Standard 3a: no money before the fee schedule is signed.
+  if (!(await canAcceptPayment(residentId, access.orgId))) return;
 
   const cents = parseAmount(field(formData, "amount"));
   if (!cents) return;

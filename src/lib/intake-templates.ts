@@ -36,7 +36,58 @@ function or(value: string | null | undefined) {
  * the wording with their own counsel before relying on them.
  */
 export function buildIntakePacket(ctx: DocContext): DocTemplate[] {
-  return [leaseAgreement(ctx), houseRules(ctx), consent(ctx)];
+  return [leaseAgreement(ctx), feeSchedule(ctx), houseRules(ctx), consent(ctx)];
+}
+
+/**
+ * NARR Standard 3a requires every fee a resident could face to be disclosed in
+ * writing and signed BEFORE any money is accepted — hence a standalone document
+ * rather than a clause buried in the occupancy agreement.
+ */
+function feeSchedule(ctx: DocContext): DocTemplate {
+  return {
+    type: "fee_schedule",
+    title: "Schedule of Fees & Refund Policy",
+    body: [
+      `${ctx.orgName.toUpperCase()}`,
+      `SCHEDULE OF FEES & REFUND POLICY`,
+      ``,
+      `Provided to ${or(ctx.residentName)} on ${or(ctx.today)}, before any payment is accepted.`,
+      ``,
+      `1. RECURRING PROGRAM FEE`,
+      `   • Amount: ${or(ctx.rent)}`,
+      `   • Covers: bed, utilities, and access to the recovery program.`,
+      `   • Due before the period it covers. A period is not considered paid until funds are received.`,
+      ``,
+      `2. ONE-TIME AND SITUATIONAL CHARGES`,
+      `The Resident may also become responsible for the following. Any amount left blank is not charged by this Residence.`,
+      `   • Security or damage deposit: ____________`,
+      `   • Admission or intake fee: ____________`,
+      `   • Late fee, and the number of days before it applies: ____________`,
+      `   • Replacement of lost keys or fobs: ____________`,
+      `   • Damage beyond ordinary wear: charged at documented cost of repair.`,
+      `   • Drug testing beyond the routine schedule: ____________`,
+      ``,
+      `No fee may be charged to the Resident unless it appears above.`,
+      ``,
+      `3. WHAT IS NOT CHARGED`,
+      `There is no fee for filing a grievance, for requesting a reasonable accommodation, or for receiving a copy of the Resident's own records.`,
+      ``,
+      `4. REFUND POLICY`,
+      `   • Unused portion of a prepaid period: ____________`,
+      `   • Deposit return, and the conditions for withholding it: ____________`,
+      `   • Timeframe for any refund to be issued: ____________`,
+      `Refunds are calculated from the date the Resident's belongings are removed.`,
+      ``,
+      `5. THIRD-PARTY PAYERS`,
+      `Where a third party pays any amount on the Resident's behalf, the Resident will be told the amount and the payer. The Resident may request a written statement of their account at any time, at no charge.`,
+      ``,
+      `6. NON-PAYMENT`,
+      `The Residence will discuss any missed payment with the Resident before taking action. Consequences of continued non-payment are set out in the Residency & Occupancy Agreement.`,
+      ``,
+      `By signing below, the Resident acknowledges they were told about every fee above before paying anything, and that they understand the refund policy.`,
+    ].join("\n"),
+  };
 }
 
 function leaseAgreement(ctx: DocContext): DocTemplate {

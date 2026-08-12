@@ -12,6 +12,7 @@ import {
   paymentPromises,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
+import { residentsWithSignedFeeSchedule } from "@/lib/fee-schedule";
 import {
   CHARGE_TYPE_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -121,6 +122,19 @@ export default async function BillingPage() {
           ),
       ])
     : [[], [], []];
+
+  const feeScheduleSigned = await residentsWithSignedFeeSchedule(
+    residentIds,
+    orgId,
+  );
+  // Already paying keeps the gate from stranding residents who predate it.
+  const canTakeMoney = new Set(
+    residentIds.filter(
+      (id) =>
+        feeScheduleSigned.has(id) ||
+        allPayments.some((p) => p.residentId === id),
+    ),
+  );
 
   const summary = new Map(
     roster.map((r) => {
@@ -280,14 +294,32 @@ export default async function BillingPage() {
                       </div>
                     )}
 
-                    <details className="mt-3">
-                      <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">
-                        Record a payment
-                      </summary>
-                      <form
-                        action={recordPayment}
-                        className="mt-3 grid gap-3 sm:grid-cols-4"
-                      >
+                    {!canTakeMoney.has(r.id) ? (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                        <p className="text-sm font-medium text-red-700">
+                          Fee schedule not signed
+                        </p>
+                        <p className="mt-1 text-xs text-red-700/80">
+                          Standard 3a requires every fee to be disclosed in
+                          writing and signed before any money is taken. Payments
+                          are blocked until this is done.
+                        </p>
+                        <Link
+                          href={`/app/residents/${r.id}`}
+                          className="mt-2 inline-flex text-xs font-medium text-red-700 underline"
+                        >
+                          Send the fee schedule
+                        </Link>
+                      </div>
+                    ) : (
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">
+                          Record a payment
+                        </summary>
+                        <form
+                          action={recordPayment}
+                          className="mt-3 grid gap-3 sm:grid-cols-4"
+                        >
                         <input
                           type="hidden"
                           name="residentId"
@@ -345,8 +377,9 @@ export default async function BillingPage() {
                             Save payment
                           </button>
                         </div>
-                      </form>
-                    </details>
+                        </form>
+                      </details>
+                    )}
 
                     <details className="mt-2">
                       <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">

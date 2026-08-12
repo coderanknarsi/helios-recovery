@@ -11,6 +11,7 @@ const fieldClass =
 
 const DOC_TYPE_OPTIONS = [
   { value: "lease_agreement", label: "Lease agreement" },
+  { value: "fee_schedule", label: "Fee schedule" },
   { value: "house_rules", label: "House rules" },
   { value: "consent", label: "Consent form" },
   { value: "other", label: "Other" },

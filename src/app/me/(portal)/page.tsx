@@ -24,7 +24,12 @@ import {
   residentNotifications,
 } from "@/db/schema";
 import { requireResident } from "@/lib/resident-access";
-import { money, toCents } from "@/lib/billing";
+import {
+  CHARGE_TYPE_LABELS,
+  PAYMENT_METHOD_LABELS,
+  money,
+  toCents,
+} from "@/lib/billing";
 import { todayIso, weekStartIso } from "@/lib/schedule";
 import { InstallHint } from "@/components/install-hint";
 import { NotificationSettings } from "@/components/notification-settings";
@@ -170,7 +175,13 @@ export default async function ResidentHomePage() {
 
   const [myCharges, myPayments, myPromise] = await Promise.all([
     db
-      .select({ amount: charges.amount, waivedAt: charges.waivedAt })
+      .select({
+        amount: charges.amount,
+        waivedAt: charges.waivedAt,
+        type: charges.type,
+        description: charges.description,
+        dueDate: charges.dueDate,
+      })
       .from(charges)
       .where(
         and(
@@ -179,7 +190,12 @@ export default async function ResidentHomePage() {
         ),
       ),
     db
-      .select({ amount: payments.amount })
+      .select({
+        amount: payments.amount,
+        receivedOn: payments.receivedOn,
+        method: payments.method,
+        payerName: payments.payerName,
+      })
       .from(payments)
       .where(
         and(
@@ -210,6 +226,27 @@ export default async function ResidentHomePage() {
     myPayments.reduce((sum, p) => sum + toCents(p.amount), 0);
   const hasLedger = myCharges.length > 0 || myPayments.length > 0;
   const promise = myPromise[0] ?? null;
+
+  // Standard 3b: residents can ask for a statement of their account at any
+  // time. Showing it beats making them ask.
+  const statement = [
+    ...myCharges.map((c) => ({
+      on: c.dueDate,
+      label: c.description || CHARGE_TYPE_LABELS[c.type],
+      cents: toCents(c.amount),
+      waived: !!c.waivedAt,
+      credit: false,
+      payer: null as string | null,
+    })),
+    ...myPayments.map((p) => ({
+      on: p.receivedOn,
+      label: PAYMENT_METHOD_LABELS[p.method],
+      cents: toCents(p.amount),
+      waived: false,
+      credit: true,
+      payer: p.payerName,
+    })),
+  ].sort((a, b) => (a.on < b.on ? 1 : -1));
 
   const placement = me.houseName
     ? [me.houseName, me.roomName, me.bedLabel ? `Bed ${me.bedLabel}` : null]
@@ -313,6 +350,47 @@ export default async function ResidentHomePage() {
                 ) : null}
               </div>
             </div>
+
+            <details className="mt-3 border-t border-border pt-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                See every charge and payment
+              </summary>
+              <ul className="mt-2 space-y-1.5">
+                {statement.map((row, i) => (
+                  <li
+                    key={i}
+                    className="flex items-baseline justify-between gap-3 text-xs"
+                  >
+                    <span className="min-w-0">
+                      <span className="text-muted-foreground">{row.on}</span>{" "}
+                      <span className={row.waived ? "line-through" : ""}>
+                        {row.label}
+                      </span>
+                      {row.payer && (
+                        <span className="block text-muted-foreground">
+                          Paid for you by {row.payer}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={`shrink-0 font-medium ${
+                        row.waived
+                          ? "text-muted-foreground line-through"
+                          : row.credit
+                            ? "text-accent"
+                            : ""
+                      }`}
+                    >
+                      {row.credit ? "-" : ""}
+                      {money(row.cents)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Ask your house manager for a printed copy any time. It is free.
+              </p>
+            </details>
           </div>
         </section>
       )}
