@@ -44,6 +44,7 @@ import {
   revokePortalAccess,
   sendPortalInvite,
   setExpectedDeparture,
+  setMedications,
   toggleLogVisibility,
 } from "./actions";
 import {
@@ -291,6 +292,7 @@ export default async function ResidentDetailPage({
 
   const bed = currentBed[0];
   const isActive = resident.status === "active";
+  const isProspect = resident.status === "prospect";
 
   const contactLine = [
     resident.emergencyContactName,
@@ -494,11 +496,41 @@ export default async function ResidentDetailPage({
           <Detail label="Substances" value={resident.substances} />
           <Detail label="Referral source" value={resident.referralSource} />
           <Detail label="Treatment history" value={resident.treatmentHistory} />
-          <Detail label="Medications" value={resident.medications} />
           <Detail label="Legal history" value={resident.legalHistory} />
           <Detail label="Emergency contact" value={contactLine || null} />
           <Detail label="Notes" value={resident.notes} />
         </dl>
+
+        {!isProspect && (
+          <details className="mt-5 border-t border-border pt-4">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">
+              Medications
+              {resident.medications ? " — on file" : " — not recorded"}
+            </summary>
+            <form action={setMedications} className="mt-3">
+              <input type="hidden" name="residentId" value={resident.id} />
+              <textarea
+                name="medications"
+                rows={3}
+                defaultValue={resident.medications ?? ""}
+                placeholder="What they store here and anything staff need to know in an emergency."
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-ring/40"
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+                >
+                  Save
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Voluntary, and never a condition of living here. Medication
+                  used to treat addiction is protected the same as any other.
+                </span>
+              </div>
+            </form>
+          </details>
+        )}
       </div>
 
       {/* Intake documents */}

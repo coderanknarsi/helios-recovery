@@ -281,12 +281,6 @@ export function ApplicationForm() {
         </fieldset>
 
         <div>
-          <Label htmlFor="medications" optional>
-            Current medications
-          </Label>
-          <textarea id="medications" name="medications" rows={2} className={fieldClass} />
-        </div>
-        <div>
           <Label htmlFor="legalHistory" optional>
             Legal history, probation, or upcoming court dates
           </Label>

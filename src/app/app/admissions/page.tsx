@@ -178,7 +178,6 @@ export default async function AdmissionsPage() {
                 <Detail label="Funding source" value={p.fundingSource} />
                 <Detail label="Referral source" value={p.referralSource} />
                 <Detail label="Treatment history" value={p.treatmentHistory} />
-                <Detail label="Medications" value={p.medications} />
                 <Detail label="Legal history" value={p.legalHistory} />
                 <Detail
                   label="Emergency contact"

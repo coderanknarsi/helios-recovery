@@ -70,6 +70,7 @@ async function scopedResident(residentId: string, access: Access) {
     .select({
       id: residents.id,
       bedId: residents.bedId,
+      status: residents.status,
       houseId: beds.houseId,
     })
     .from(residents)
@@ -351,4 +352,23 @@ export async function setExpectedDeparture(formData: FormData) {
 
   refresh(residentId);
   revalidatePath("/app/availability");
+}
+
+/** Medications are collected after acceptance, never as a condition of it. */
+export async function setMedications(formData: FormData) {
+  const access = await getAccess();
+  const residentId = field(formData, "residentId");
+  if (!residentId) return;
+
+  const resident = await scopedResident(residentId, access);
+  if (!resident || resident.status === "prospect") return;
+
+  const raw = field(formData, "medications");
+
+  await db
+    .update(residents)
+    .set({ medications: raw.length ? raw : null, updatedAt: new Date() })
+    .where(eq(residents.id, residentId));
+
+  refresh(residentId);
 }

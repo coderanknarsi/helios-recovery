@@ -37,7 +37,9 @@ const applicationSchema = z.object({
   emergencyContactName: optionalText,
   emergencyContactPhone: optionalText,
   emergencyContactRelation: optionalText,
-  medications: optionalText,
+  // No medication question here. Asking before an accept/reject decision is a
+  // pre-offer disability inquiry under the FHA and ADA; staff collect it at
+  // intake instead.
   legalHistory: optionalText,
   notes: optionalText,
   consent: z
@@ -120,7 +122,6 @@ export async function submitApplication(
       emergencyContactName: data.emergencyContactName,
       emergencyContactPhone: data.emergencyContactPhone,
       emergencyContactRelation: data.emergencyContactRelation,
-      medications: data.medications,
       legalHistory: data.legalHistory,
       notes: data.notes,
     });
@@ -166,7 +167,6 @@ export async function submitApplication(
           line("  Phone", data.emergencyContactPhone),
           line("  Relation", data.emergencyContactRelation),
           "",
-          line("Medications", data.medications),
           line("Legal history", data.legalHistory),
           line("Notes", data.notes),
         ].join("\n"),
