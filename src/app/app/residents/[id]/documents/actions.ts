@@ -125,6 +125,7 @@ export async function generateIntakePacket(formData: FormData) {
   // Prefer the operator's uploaded document library when it exists; each
   // resident gets a signable copy that references the stored PDF.
   const uploaded = await db
+
     .select()
     .from(documentTemplates)
     .where(eq(documentTemplates.orgId, access.orgId))
@@ -132,24 +133,6 @@ export async function generateIntakePacket(formData: FormData) {
       asc(documentTemplates.sortOrder),
       asc(documentTemplates.createdAt),
     );
-
-  if (uploaded.length > 0) {
-    await db.insert(intakeDocuments).values(
-      uploaded.map((t) => ({
-        orgId: access.orgId,
-        residentId,
-        type: t.type,
-        title: t.name,
-        body: null,
-        templateId: t.id,
-        storagePath: t.storagePath,
-        fileName: t.fileName,
-        createdBy: access.profile.id,
-      })),
-    );
-    revalidatePath(`/app/residents/${residentId}`);
-    return;
-  }
 
   const [org] = await db
     .select({ name: organizations.name })
@@ -184,24 +167,53 @@ export async function generateIntakePacket(formData: FormData) {
     today: fmtDate(new Date()),
   };
 
-  const templates = buildIntakePacket(ctx);
-  await db.insert(intakeDocuments).values(
-    templates.map((t) => ({
-      orgId: access.orgId,
-      residentId,
-      type: t.type,
-      title: t.title,
-      body: t.body,
-      createdBy: access.profile.id,
-    })),
-  );
+  const generated = buildIntakePacket(ctx);
+  const rows: (typeof intakeDocuments.$inferInsert)[] = uploaded.length
+    ? uploaded.map((t) => ({
+        orgId: access.orgId,
+        residentId,
+        type: t.type,
+        title: t.name,
+        body: null,
+        templateId: t.id,
+        storagePath: t.storagePath,
+        fileName: t.fileName,
+        createdBy: access.profile.id,
+      }))
+    : generated.map((t) => ({
+        orgId: access.orgId,
+        residentId,
+        type: t.type,
+        title: t.title,
+        body: t.body,
+        createdBy: access.profile.id,
+      }));
+
+  // Standard 3a gates every payment on a signed fee schedule, so a library that
+  // omits one would leave the resident permanently unable to pay. Fall back to
+  // the generated disclosure rather than issue a packet that cannot be settled.
+  if (uploaded.length && !uploaded.some((t) => t.type === "fee_schedule")) {
+    const fallback = generated.find((t) => t.type === "fee_schedule");
+    if (fallback) {
+      rows.push({
+        orgId: access.orgId,
+        residentId,
+        type: fallback.type,
+        title: fallback.title,
+        body: fallback.body,
+        createdBy: access.profile.id,
+      });
+    }
+  }
+
+  await db.insert(intakeDocuments).values(rows);
 
   await notifyResident({
     orgId: access.orgId,
     residentId,
     title: "Documents ready to sign",
-    body: `You have ${templates.length} document${
-      templates.length === 1 ? "" : "s"
+    body: `You have ${rows.length} document${
+      rows.length === 1 ? "" : "s"
     } waiting for your signature.`,
     url: "/me/documents",
     sentBy: access.profile.id,

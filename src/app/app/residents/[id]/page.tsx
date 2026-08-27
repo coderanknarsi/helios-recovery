@@ -152,9 +152,11 @@ export default async function ResidentDetailPage({
 
   if (!resident) notFound();
 
-  const [{ requestTime }] = await db.select({
-    requestTime: sql<Date>`current_timestamp`,
-  });
+  // One clock reading per request: Date.now() during render is impure.
+  const [timeRow] = await db.execute<{ now: Date }>(
+    sql`select current_timestamp as now`,
+  );
+  const requestTime = timeRow.now;
 
   // Managers may only view residents placed in one of their assigned houses.
   if (!access.isAdmin) {

@@ -1005,6 +1005,8 @@ export const paymentLinks = pgTable("payment_links", {
   thirdParty: boolean("third_party").notNull().default(false),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  /** Set by the webhook on first success, so a link cannot be paid twice. */
+  paidAt: timestamp("paid_at", { withTimezone: true }),
   createdBy: uuid("created_by").references(() => profiles.id, {
     onDelete: "set null",
   }),

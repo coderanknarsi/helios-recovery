@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { payments } from "@/db/schema";
+import { paymentLinks, payments } from "@/db/schema";
 import { fromCents } from "@/lib/billing";
 import {
   reconcileDispute,
@@ -77,6 +78,21 @@ export async function POST(request: NextRequest) {
             stripeChargeId,
           })
           .onConflictDoNothing();
+
+        // Retire the link so it cannot be paid a second time.
+        const linkId = session.metadata?.linkId;
+        if (linkId) {
+          await db
+            .update(paymentLinks)
+            .set({ paidAt: new Date() })
+            .where(
+              and(
+                eq(paymentLinks.id, linkId),
+                eq(paymentLinks.orgId, orgId),
+                isNull(paymentLinks.paidAt),
+              ),
+            );
+        }
         break;
       }
       case "refund.created":

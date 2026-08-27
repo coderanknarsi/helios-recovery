@@ -38,6 +38,7 @@ export async function startCheckout(formData: FormData) {
       and(
         eq(paymentLinks.token, token),
         isNull(paymentLinks.revokedAt),
+        isNull(paymentLinks.paidAt),
         or(isNull(paymentLinks.expiresAt), gt(paymentLinks.expiresAt, new Date())),
       ),
     )

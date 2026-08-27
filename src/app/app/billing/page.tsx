@@ -38,6 +38,7 @@ import {
   waiveCharge,
 } from "./actions";
 import { RefundPaymentForm } from "./refund-payment-form";
+import { ManualRefundForm } from "./manual-refund-form";
 
 export const metadata: Metadata = { title: "Rent" };
 
@@ -164,6 +165,7 @@ export default async function BillingPage() {
             eq(paymentLinks.orgId, orgId),
             inArray(paymentLinks.residentId, residentIds),
             isNull(paymentLinks.revokedAt),
+            isNull(paymentLinks.paidAt),
             or(
               isNull(paymentLinks.expiresAt),
               gt(paymentLinks.expiresAt, new Date()),
@@ -575,6 +577,14 @@ export default async function BillingPage() {
                           </div>
                         </form>
                       </details>
+                    )}
+
+                    {access.isAdmin && s.paid > 0 && (
+                      <ManualRefundForm
+                        residentId={r.id}
+                        netPaidCents={s.paid}
+                        today={today}
+                      />
                     )}
 
                     <details className="mt-2">

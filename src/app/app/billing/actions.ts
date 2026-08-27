@@ -20,7 +20,13 @@ import {
   type PaymentRefundReason,
 } from "@/db/schema";
 import { getAccess, requireAdmin, type Access } from "@/lib/access";
-import { fromCents, parseAmount, toCents, weeklyCents } from "@/lib/billing";
+import {
+  PAYMENT_METHOD_LABELS,
+  fromCents,
+  parseAmount,
+  toCents,
+  weeklyCents,
+} from "@/lib/billing";
 import { canAcceptPayment } from "@/lib/fee-schedule";
 import { defaultLinkLabel } from "@/lib/payment-links";
 import { addDaysIso, todayIso, weekStartIso } from "@/lib/schedule";
@@ -51,6 +57,31 @@ const REFUND_REASONS: PaymentRefundReason[] = [
   "departure_or_policy",
   "other",
 ];
+
+const REFUND_REASON_LABELS: Record<PaymentRefundReason, string> = {
+  resident_request: "Resident or payer requested it",
+  duplicate: "Duplicate payment",
+  payment_error: "Payment entered in error",
+  departure_or_policy: "Departure or written policy",
+  other: "Other",
+};
+
+const manualRefundSchema = z.object({
+  residentId: z.string().uuid(),
+  amount: z.string().trim().min(1),
+  // Card money must be returned through Stripe, never keyed in by hand.
+  method: z.enum(["cash", "check", "money_order", "ach", "other"]),
+  refundedOn: z.string().trim().optional(),
+  reason: z.enum([
+    "resident_request",
+    "duplicate",
+    "payment_error",
+    "departure_or_policy",
+    "other",
+  ]),
+  note: z.string().trim().min(10).max(1000),
+  confirmed: z.literal("on"),
+});
 
 const refundSchema = z.object({
   paymentId: z.string().uuid(),
@@ -202,6 +233,78 @@ export async function recordPayment(formData: FormData) {
   });
 
   refresh(residentId);
+}
+
+/**
+ * Returns money that never went through Stripe: a cash deposit handed back at
+ * move-out, a check written back, a duplicate money order. Card payments are
+ * deliberately excluded — those must go through Stripe so the processor and the
+ * ledger can never disagree about what was actually returned.
+ */
+export async function recordManualRefund(
+  _previous: RefundState,
+  formData: FormData,
+): Promise<RefundState> {
+  const access = await requireAdmin();
+  const parsed = manualRefundSchema.safeParse(
+    Object.fromEntries(formData.entries()),
+  );
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Enter a valid amount, method, reason, note, and confirmation.",
+    };
+  }
+
+  const resident = await scopedResident(parsed.data.residentId, access);
+  if (!resident) {
+    return { status: "error", message: "That resident is not in your caseload." };
+  }
+
+  const cents = parseAmount(parsed.data.amount);
+  if (!cents) {
+    return { status: "error", message: "Enter a valid refund amount." };
+  }
+
+  // You cannot hand back more than the resident has actually paid in. Negative
+  // rows are already in this sum, so prior refunds reduce what remains.
+  const ledger = await db
+    .select({ amount: payments.amount })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.orgId, access.orgId),
+        eq(payments.residentId, resident.id),
+      ),
+    );
+  const netCents = ledger.reduce((sum, row) => sum + toCents(row.amount), 0);
+  if (cents > netCents) {
+    return {
+      status: "error",
+      message: `Only ${fromCents(Math.max(0, netCents))} has been paid in and can be returned.`,
+    };
+  }
+
+  const refundedOn = /^\d{4}-\d{2}-\d{2}$/.test(parsed.data.refundedOn ?? "")
+    ? (parsed.data.refundedOn as string)
+    : todayIso();
+
+  await db.insert(payments).values({
+    orgId: access.orgId,
+    residentId: resident.id,
+    amount: fromCents(-cents),
+    receivedOn: refundedOn,
+    method: parsed.data.method,
+    kind: "refund",
+    note: `${REFUND_REASON_LABELS[parsed.data.reason]} — ${parsed.data.note}`,
+    recordedBy: access.profile.id,
+  });
+
+  refresh(resident.id);
+  return {
+    status: "success",
+    message: `Recorded ${fromCents(cents)} returned by ${PAYMENT_METHOD_LABELS[parsed.data.method].toLowerCase()}.`,
+  };
 }
 
 /**

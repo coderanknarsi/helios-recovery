@@ -30,6 +30,7 @@ export default async function PayPage({
       amount: paymentLinks.amount,
       label: paymentLinks.label,
       thirdParty: paymentLinks.thirdParty,
+      paidAt: paymentLinks.paidAt,
       orgName: organizations.name,
     })
     .from(paymentLinks)
@@ -59,18 +60,21 @@ export default async function PayPage({
   const fixed = link.amount ? toCents(link.amount) : null;
   const paymentsReady =
     stripeEnabled && !!process.env.STRIPE_RENT_PAYMENT_METHOD_CONFIGURATION_ID;
+  // Hide the form the moment this link is used, including before the webhook
+  // lands, so a returning payer cannot be charged a second time.
+  const settled = !!link.paidAt || !!paid;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md items-center px-4 py-10">
       <div className="w-full">
-        {paid && (
+        {settled && (
           <div className="mb-4 flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
               <p className="text-sm font-semibold text-accent">Payment received</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Your receipt is on its way by email. It can take a minute to show
-                up on the account.
+                This link has been paid and cannot be used again. It can take a
+                minute to show up on the account.
               </p>
             </div>
           </div>
@@ -82,7 +86,7 @@ export default async function PayPage({
             Rent payment for {link.label}
           </p>
 
-          {paymentsReady ? (
+          {paymentsReady && !settled ? (
           <form action={startCheckout} className="mt-5 space-y-4">
             <input type="hidden" name="token" value={token} />
 
@@ -134,7 +138,7 @@ export default async function PayPage({
               Continue to payment
             </button>
           </form>
-          ) : (
+          ) : settled ? null : (
             <div className="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4">
               <p className="text-sm font-medium">Card payments are unavailable</p>
               <p className="mt-1 text-xs text-muted-foreground">
