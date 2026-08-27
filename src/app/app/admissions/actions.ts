@@ -2,15 +2,50 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/db";
-import { residents, beds, houses, organizations } from "@/db/schema";
-import { adminOrgId } from "@/lib/access";
+import {
+  applicationContactAttempts,
+  applicationDecisions,
+  residents,
+  beds,
+  houses,
+  organizations,
+  type AccommodationReviewStatus,
+  type ApplicationContactChannel,
+  type ApplicationDeclineReason,
+} from "@/db/schema";
+import { adminOrgId, requireAdmin } from "@/lib/access";
 import { siteConfig } from "@/lib/site";
 import { sendSms } from "@/lib/sms";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
+const DECLINE_REASONS: ApplicationDeclineReason[] = [
+  "published_eligibility_not_met",
+  "requested_services_outside_nonclinical_scope",
+  "documented_direct_safety_risk",
+  "other_policy_criterion",
+];
+const ACCOMMODATION_REVIEWS: AccommodationReviewStatus[] = [
+  "not_applicable_or_not_requested",
+  "request_considered",
+  "accommodation_offered",
+  "accommodation_declined",
+];
+const CONTACT_CHANNELS: ApplicationContactChannel[] = [
+  "phone",
+  "email",
+  "text",
+  "other",
+];
+
+export type ApplicationDecisionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
 
 /**
  * Reset any bed that is still marked "reserved" but is no longer claimed by a
@@ -164,29 +199,227 @@ export async function releaseHold(formData: FormData) {
   revalidatePath("/app/availability");
 }
 
-/** Decline a prospect's application. */
-export async function rejectProspect(formData: FormData) {
-  const orgId = await adminOrgId();
-  if (!orgId) return;
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-
-  await db
-    .update(residents)
-    .set({
-      status: "rejected",
-      waitlistedAt: null,
-      bedId: null,
-      updatedAt: new Date(),
+/** Log one factual attempt to reach a pending applicant. */
+export async function recordApplicationContactAttempt(formData: FormData) {
+  const access = await requireAdmin();
+  const parsed = z
+    .object({
+      residentId: z.string().uuid(),
+      channel: z.enum(CONTACT_CHANNELS),
+      attemptedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      note: z.string().trim().min(5).max(500),
     })
-    .where(and(eq(residents.id, id), eq(residents.orgId, orgId)));
+    .safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success || !CONTACT_CHANNELS.includes(parsed.data.channel)) return;
 
-  // Give back any bed they were holding.
-  await releaseOrphanedReservedBeds(orgId);
+  const attemptedAt = new Date(`${parsed.data.attemptedOn}T12:00:00Z`);
+  if (attemptedAt > new Date()) return;
+  const [prospect] = await db
+    .select({ id: residents.id })
+    .from(residents)
+    .where(
+      and(
+        eq(residents.id, parsed.data.residentId),
+        eq(residents.orgId, access.orgId),
+        eq(residents.status, "prospect"),
+      ),
+    )
+    .limit(1);
+  if (!prospect) return;
 
+  await db.insert(applicationContactAttempts).values({
+    orgId: access.orgId,
+    residentId: prospect.id,
+    channel: parsed.data.channel,
+    attemptedAt,
+    note: parsed.data.note,
+    attemptedBy: access.profile.id,
+  });
+  revalidatePath("/app/admissions");
+}
+
+/** Close a pending application with a specific, immutable outcome. */
+export async function closeApplication(
+  _previous: ApplicationDecisionState,
+  formData: FormData,
+): Promise<ApplicationDecisionState> {
+  const access = await requireAdmin();
+  const base = z
+    .object({
+      residentId: z.string().uuid(),
+      outcome: z.enum(["declined", "withdrawn", "unresponsive"]),
+      declineReason: z.string().optional(),
+      accommodationReview: z.string().optional(),
+      note: z.string().trim().min(10).max(2000),
+      confirmed: z.literal("on"),
+    })
+    .safeParse(Object.fromEntries(formData.entries()));
+  if (!base.success) {
+    return {
+      status: "error",
+      message: "Choose an outcome and add a factual note.",
+    };
+  }
+
+  const [prospect] = await db
+    .select({
+      id: residents.id,
+      email: residents.email,
+      phone: residents.phone,
+    })
+    .from(residents)
+    .where(
+      and(
+        eq(residents.id, base.data.residentId),
+        eq(residents.orgId, access.orgId),
+        eq(residents.status, "prospect"),
+      ),
+    )
+    .limit(1);
+  if (!prospect) {
+    return { status: "error", message: "That application is no longer open." };
+  }
+
+  let declineReason: ApplicationDeclineReason | null = null;
+  let accommodationReview: AccommodationReviewStatus | null = null;
+  if (base.data.outcome === "declined") {
+    if (
+      !DECLINE_REASONS.includes(
+        base.data.declineReason as ApplicationDeclineReason,
+      ) ||
+      !ACCOMMODATION_REVIEWS.includes(
+        base.data.accommodationReview as AccommodationReviewStatus,
+      ) ||
+      base.data.note.length < 20
+    ) {
+      return {
+        status: "error",
+        message:
+          "A denial needs an objective reason, accommodation review, and factual note.",
+      };
+    }
+    declineReason = base.data.declineReason as ApplicationDeclineReason;
+    accommodationReview =
+      base.data.accommodationReview as AccommodationReviewStatus;
+  }
+
+  if (base.data.outcome === "unresponsive") {
+    const attempts = await db
+      .select({
+        channel: applicationContactAttempts.channel,
+        attemptedAt: applicationContactAttempts.attemptedAt,
+      })
+      .from(applicationContactAttempts)
+      .where(
+        and(
+          eq(applicationContactAttempts.orgId, access.orgId),
+          eq(applicationContactAttempts.residentId, prospect.id),
+        ),
+      );
+    if (attempts.length < 3) {
+      return {
+        status: "error",
+        message: "Log at least three contact attempts before closing.",
+      };
+    }
+    const times = attempts.map((attempt) => attempt.attemptedAt.getTime());
+    if (Math.max(...times) - Math.min(...times) < 7 * 86_400_000) {
+      return {
+        status: "error",
+        message: "The contact attempts must span at least seven days.",
+      };
+    }
+    if (prospect.email && prospect.phone) {
+      const usedEmail = attempts.some((attempt) => attempt.channel === "email");
+      const usedPhone = attempts.some((attempt) =>
+        ["phone", "text"].includes(attempt.channel),
+      );
+      if (!usedEmail || !usedPhone) {
+        return {
+          status: "error",
+          message: "Use both email and phone/text before closing for no response.",
+        };
+      }
+    }
+  }
+
+  const nextStatus =
+    base.data.outcome === "declined"
+      ? "rejected"
+      : base.data.outcome === "withdrawn"
+        ? "withdrawn"
+        : "unresponsive";
+
+  await db.transaction(async (tx) => {
+    await tx.insert(applicationDecisions).values({
+      orgId: access.orgId,
+      residentId: prospect.id,
+      outcome: base.data.outcome,
+      declineReason,
+      note: base.data.note,
+      accommodationReview,
+      decidedBy: access.profile.id,
+    });
+    await tx
+      .update(residents)
+      .set({
+        status: nextStatus,
+        waitlistedAt: null,
+        bedId: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(residents.id, prospect.id),
+          eq(residents.orgId, access.orgId),
+          eq(residents.status, "prospect"),
+        ),
+      );
+  });
+
+  await releaseOrphanedReservedBeds(access.orgId);
   revalidatePath("/app/admissions");
   revalidatePath("/app");
   revalidatePath("/app/availability");
+  return { status: "success", message: "Application closed." };
+}
+
+/** Return a closed application to review without deleting its prior decision. */
+export async function reopenApplication(formData: FormData) {
+  const access = await requireAdmin();
+  const residentId = String(formData.get("residentId") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  if (!z.string().uuid().safeParse(residentId).success || note.length < 10) return;
+
+  await db.transaction(async (tx) => {
+    const [closed] = await tx
+      .select({ id: residents.id })
+      .from(residents)
+      .where(
+        and(
+          eq(residents.id, residentId),
+          eq(residents.orgId, access.orgId),
+          inArray(residents.status, ["rejected", "withdrawn", "unresponsive"]),
+        ),
+      )
+      .limit(1);
+    if (!closed) return;
+
+    await tx.insert(applicationDecisions).values({
+      orgId: access.orgId,
+      residentId,
+      outcome: "reopened",
+      note,
+      decidedBy: access.profile.id,
+    });
+    await tx
+      .update(residents)
+      .set({ status: "prospect", updatedAt: new Date() })
+      .where(eq(residents.id, residentId));
+  });
+
+  revalidatePath("/app/admissions");
+  revalidatePath("/app");
 }
 
 /** Move a prospect onto the waitlist (kept in FIFO order by waitlistedAt). */

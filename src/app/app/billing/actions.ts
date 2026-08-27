@@ -1,8 +1,9 @@
 "use server";
 
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/db";
 import {
   residents,
@@ -10,16 +11,20 @@ import {
   houses,
   charges,
   payments,
+  paymentDisputes,
   paymentLinks,
   paymentPromises,
+  paymentRefunds,
   type ChargeType,
   type PaymentMethod,
+  type PaymentRefundReason,
 } from "@/db/schema";
-import { getAccess, type Access } from "@/lib/access";
-import { fromCents, parseAmount, weeklyCents } from "@/lib/billing";
+import { getAccess, requireAdmin, type Access } from "@/lib/access";
+import { fromCents, parseAmount, toCents, weeklyCents } from "@/lib/billing";
 import { canAcceptPayment } from "@/lib/fee-schedule";
 import { defaultLinkLabel } from "@/lib/payment-links";
 import { addDaysIso, todayIso, weekStartIso } from "@/lib/schedule";
+import { requireStripe } from "@/lib/stripe";
 
 const CHARGE_TYPES: ChargeType[] = [
   "rent",
@@ -38,6 +43,27 @@ const METHODS: PaymentMethod[] = [
   "ach",
   "other",
 ];
+
+const REFUND_REASONS: PaymentRefundReason[] = [
+  "resident_request",
+  "duplicate",
+  "payment_error",
+  "departure_or_policy",
+  "other",
+];
+
+const refundSchema = z.object({
+  paymentId: z.string().uuid(),
+  amount: z.string().trim().min(1),
+  reason: z.enum(REFUND_REASONS),
+  note: z.string().trim().min(10).max(1000),
+  confirmed: z.literal("on"),
+});
+
+export type RefundState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
 
 function field(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -176,6 +202,157 @@ export async function recordPayment(formData: FormData) {
   });
 
   refresh(residentId);
+}
+
+/**
+ * Requests a full or partial Stripe refund. The signed refund webhook writes
+ * the negative ledger entry; this action only records and submits the request.
+ */
+export async function requestStripeRefund(
+  _previous: RefundState,
+  formData: FormData,
+): Promise<RefundState> {
+  const access = await requireAdmin();
+  const parsed = refundSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success || !REFUND_REASONS.includes(parsed.data.reason)) {
+    return {
+      status: "error",
+      message: "Enter a valid amount, reason, note, and confirmation.",
+    };
+  }
+
+  const cents = parseAmount(parsed.data.amount);
+  if (!cents) {
+    return { status: "error", message: "Enter a valid refund amount." };
+  }
+
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.id, parsed.data.paymentId),
+        eq(payments.orgId, access.orgId),
+        eq(payments.kind, "receipt"),
+        eq(payments.method, "card"),
+      ),
+    )
+    .limit(1);
+  const paymentIntentId =
+    payment?.stripePaymentIntentId ??
+    (payment?.reference?.startsWith("pi_") ? payment.reference : null);
+  if (!payment || !paymentIntentId) {
+    return { status: "error", message: "This card payment is not refundable." };
+  }
+
+  const [refunds, openDisputes] = await Promise.all([
+    db
+      .select({ amount: paymentRefunds.amount })
+      .from(paymentRefunds)
+      .where(
+        and(
+          eq(paymentRefunds.paymentId, payment.id),
+          inArray(paymentRefunds.status, [
+            "requested",
+            "pending",
+            "requires_action",
+            "succeeded",
+            "unknown",
+          ]),
+        ),
+      ),
+    db
+      .select({ id: paymentDisputes.id })
+      .from(paymentDisputes)
+      .where(
+        and(
+          eq(paymentDisputes.paymentId, payment.id),
+          isNull(paymentDisputes.closedAt),
+        ),
+      )
+      .limit(1),
+  ]);
+  if (openDisputes.length) {
+    return {
+      status: "error",
+      message: "This payment has an open dispute and cannot be refunded here.",
+    };
+  }
+
+  const reservedCents = refunds.reduce(
+    (sum, refund) => sum + toCents(refund.amount),
+    0,
+  );
+  const remainingCents = toCents(payment.amount) - reservedCents;
+  if (cents > remainingCents) {
+    return {
+      status: "error",
+      message: `Only ${fromCents(Math.max(0, remainingCents))} remains refundable.`,
+    };
+  }
+
+  const requestKey = randomUUID();
+  await db.insert(paymentRefunds).values({
+    orgId: access.orgId,
+    paymentId: payment.id,
+    requestKey,
+    amount: fromCents(cents),
+    reason: parsed.data.reason,
+    staffNote: parsed.data.note,
+    requestedBy: access.profile.id,
+  });
+
+  try {
+    const refund = await requireStripe().refunds.create(
+      {
+        payment_intent: paymentIntentId,
+        amount: cents,
+        reason:
+          parsed.data.reason === "duplicate"
+            ? "duplicate"
+            : "requested_by_customer",
+        metadata: {
+          heliosRefundRequestId: requestKey,
+          orgId: access.orgId,
+          residentId: payment.residentId,
+          paymentId: payment.id,
+        },
+      },
+      { idempotencyKey: requestKey },
+    );
+
+    await db
+      .update(paymentRefunds)
+      .set({
+        stripeRefundId: refund.id,
+        status: refund.status ?? "unknown",
+        failureReason: refund.failure_reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentRefunds.requestKey, requestKey));
+  } catch (error) {
+    console.error(`[stripe] refund request ${requestKey} needs review`, error);
+    await db
+      .update(paymentRefunds)
+      .set({
+        status: "unknown",
+        failureReason: "Stripe did not confirm the request. Check the Dashboard.",
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentRefunds.requestKey, requestKey));
+    refresh(payment.residentId);
+    return {
+      status: "error",
+      message:
+        "Stripe did not confirm the refund. Check Stripe before trying again.",
+    };
+  }
+
+  refresh(payment.residentId);
+  return {
+    status: "success",
+    message: "Refund requested. The ledger updates after Stripe confirms it.",
+  };
 }
 
 /** Forgives a charge without deleting it, so the decision stays on the record. */

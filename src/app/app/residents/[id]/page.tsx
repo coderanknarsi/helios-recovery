@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import {
   ArrowLeft,
   BedDouble,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { db } from "@/db";
 import {
+  applicationDecisions,
   residents,
   beds,
   rooms,
@@ -92,6 +93,8 @@ const statusStyles: Record<string, string> = {
   discharged: "bg-surface-muted text-muted-foreground",
   alumni: "bg-primary/10 text-primary",
   rejected: "bg-red-50 text-red-600",
+  withdrawn: "bg-surface-muted text-muted-foreground",
+  unresponsive: "bg-amber-50 text-amber-700",
   prospect: "bg-blue-50 text-blue-700",
 };
 
@@ -149,6 +152,10 @@ export default async function ResidentDetailPage({
 
   if (!resident) notFound();
 
+  const [{ requestTime }] = await db.select({
+    requestTime: sql<Date>`current_timestamp`,
+  });
+
   // Managers may only view residents placed in one of their assigned houses.
   if (!access.isAdmin) {
     const allowed = access.houseIds ?? [];
@@ -204,6 +211,19 @@ export default async function ResidentDetailPage({
       ),
   ]);
 
+  const decisionHistory = access.isAdmin
+    ? await db
+        .select()
+        .from(applicationDecisions)
+        .where(
+          and(
+            eq(applicationDecisions.residentId, id),
+            eq(applicationDecisions.orgId, orgId),
+          ),
+        )
+        .orderBy(desc(applicationDecisions.createdAt))
+    : [];
+
   const portalSessions = await db
     .select({ lastUsedAt: residentSessions.lastUsedAt })
     .from(residentSessions)
@@ -254,7 +274,7 @@ export default async function ResidentDetailPage({
   );
 
   const activeRois = rois.filter(
-    (r) => r.revokedAt === null && r.expiresAt.getTime() > Date.now(),
+    (r) => r.revokedAt === null && r.expiresAt.getTime() > requestTime.getTime(),
   ).length;
 
   const documents = await db
@@ -285,7 +305,7 @@ export default async function ResidentDetailPage({
   const linkActive =
     !!resident.signToken &&
     !!resident.signTokenExpiresAt &&
-    resident.signTokenExpiresAt.getTime() > Date.now();
+    resident.signTokenExpiresAt.getTime() > requestTime.getTime();
   const activeLink = linkActive
     ? `${siteConfig.url}/sign/${resident.signToken}`
     : null;
@@ -532,6 +552,34 @@ export default async function ResidentDetailPage({
           </details>
         )}
       </div>
+
+      {access.isAdmin && decisionHistory.length > 0 && (
+        <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <h2 className="text-sm font-semibold">Application decision history</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Internal record. Entries remain in order even when an application is reopened.
+          </p>
+          <ol className="mt-4 space-y-3">
+            {decisionHistory.map((decision) => (
+              <li key={decision.id} className="border-l-2 border-border pl-3 text-sm">
+                <p className="font-medium capitalize">
+                  {decision.outcome.replaceAll("_", " ")}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {fmtDate(decision.createdAt)}
+                  {decision.declineReason
+                    ? ` · ${decision.declineReason.replaceAll("_", " ")}`
+                    : ""}
+                  {decision.accommodationReview
+                    ? ` · Accommodation review: ${decision.accommodationReview.replaceAll("_", " ")}`
+                    : ""}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{decision.note}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* Intake documents */}
       <div className="mt-5 rounded-xl border border-border bg-surface p-6 shadow-sm">

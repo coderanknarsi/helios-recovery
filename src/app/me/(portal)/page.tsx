@@ -19,6 +19,7 @@ import {
   chores,
   intakeDocuments,
   payments,
+  paymentDisputes,
   paymentPromises,
   residentLogs,
   residentNotifications,
@@ -173,7 +174,7 @@ export default async function ResidentHomePage() {
   const daysHere = daysSince(me.admitDate);
   const daysSober = daysSince(me.sobrietyDate);
 
-  const [myCharges, myPayments, myPromise] = await Promise.all([
+  const [myCharges, myPayments, myPromise, disputes] = await Promise.all([
     db
       .select({
         amount: charges.amount,
@@ -191,10 +192,12 @@ export default async function ResidentHomePage() {
       ),
     db
       .select({
+        id: payments.id,
         amount: payments.amount,
         receivedOn: payments.receivedOn,
         method: payments.method,
         payerName: payments.payerName,
+        kind: payments.kind,
       })
       .from(payments)
       .where(
@@ -217,6 +220,19 @@ export default async function ResidentHomePage() {
         ),
       )
       .limit(1),
+    db
+      .select({
+        id: paymentDisputes.id,
+        paymentId: paymentDisputes.paymentId,
+        amount: paymentDisputes.amount,
+      })
+      .from(paymentDisputes)
+      .where(
+        and(
+          eq(paymentDisputes.orgId, me.orgId),
+          isNull(paymentDisputes.closedAt),
+        ),
+      ),
   ]);
 
   const balance =
@@ -226,6 +242,10 @@ export default async function ResidentHomePage() {
     myPayments.reduce((sum, p) => sum + toCents(p.amount), 0);
   const hasLedger = myCharges.length > 0 || myPayments.length > 0;
   const promise = myPromise[0] ?? null;
+  const paymentIds = new Set(myPayments.map((payment) => payment.id));
+  const openDisputes = disputes.filter((dispute) =>
+    paymentIds.has(dispute.paymentId),
+  );
 
   // Standard 3b: residents can ask for a statement of their account at any
   // time. Showing it beats making them ask.
@@ -237,14 +257,24 @@ export default async function ResidentHomePage() {
       waived: !!c.waivedAt,
       credit: false,
       payer: null as string | null,
+      detail: null as string | null,
     })),
     ...myPayments.map((p) => ({
       on: p.receivedOn,
-      label: PAYMENT_METHOD_LABELS[p.method],
-      cents: toCents(p.amount),
       waived: false,
-      credit: true,
-      payer: p.payerName,
+      credit: p.kind === "receipt",
+      payer: p.kind === "receipt" ? p.payerName : null,
+      detail:
+        p.kind !== "receipt" && p.payerName
+          ? `Returned to ${p.payerName}`
+          : null,
+      label:
+        p.kind === "receipt"
+          ? PAYMENT_METHOD_LABELS[p.method]
+          : p.kind === "refund"
+            ? "Card refund"
+            : "Card payment reversed after dispute",
+      cents: Math.abs(toCents(p.amount)),
     })),
   ].sort((a, b) => (a.on < b.on ? 1 : -1));
 
@@ -351,6 +381,16 @@ export default async function ResidentHomePage() {
               </div>
             </div>
 
+            {openDisputes.length > 0 && (
+              <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                {openDisputes.length === 1
+                  ? `A ${money(toCents(openDisputes[0].amount))} card payment is being reviewed. `
+                  : `${openDisputes.length} card payments are being reviewed. `}
+                Your balance will not change unless the payment is finally
+                reversed.
+              </div>
+            )}
+
             <details className="mt-3 border-t border-border pt-3">
               <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
                 See every charge and payment
@@ -369,6 +409,11 @@ export default async function ResidentHomePage() {
                       {row.payer && (
                         <span className="block text-muted-foreground">
                           Paid for you by {row.payer}
+                        </span>
+                      )}
+                      {row.detail && (
+                        <span className="block text-muted-foreground">
+                          {row.detail}
                         </span>
                       )}
                     </span>

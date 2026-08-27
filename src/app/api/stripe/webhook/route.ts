@@ -3,6 +3,10 @@ import type Stripe from "stripe";
 import { db } from "@/db";
 import { payments } from "@/db/schema";
 import { fromCents } from "@/lib/billing";
+import {
+  reconcileDispute,
+  reconcileRefund,
+} from "@/lib/payment-adjustments";
 import { todayIso } from "@/lib/schedule";
 import { stripe } from "@/lib/stripe";
 
@@ -32,36 +36,67 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
   }
 
-  if (event.type !== "checkout.session.completed") {
-    return NextResponse.json({ received: true });
-  }
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object;
+        if (session.payment_status !== "paid") break;
 
-  const session = event.data.object;
-  if (session.payment_status !== "paid") {
-    return NextResponse.json({ received: true });
-  }
+        const orgId = session.metadata?.orgId;
+        const residentId = session.metadata?.residentId;
+        const cents = session.amount_total;
+        if (!orgId || !residentId || !cents) break;
 
-  const orgId = session.metadata?.orgId;
-  const residentId = session.metadata?.residentId;
-  const cents = session.amount_total;
-  if (!orgId || !residentId || !cents) {
-    return NextResponse.json({ received: true });
-  }
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id ?? null;
+        const stripeChargeId =
+          session.payment_intent &&
+          typeof session.payment_intent !== "string" &&
+          session.payment_intent.latest_charge
+            ? typeof session.payment_intent.latest_charge === "string"
+              ? session.payment_intent.latest_charge
+              : session.payment_intent.latest_charge.id
+            : null;
 
-  // Unique stripe_session_id makes a redelivered event a no-op.
-  await db
-    .insert(payments)
-    .values({
-      orgId,
-      residentId,
-      amount: fromCents(cents),
-      receivedOn: todayIso(),
-      method: "card",
-      payerName: session.metadata?.payerName || null,
-      reference: typeof session.payment_intent === "string" ? session.payment_intent : null,
-      stripeSessionId: session.id,
-    })
-    .onConflictDoNothing();
+        // Unique Stripe IDs make a redelivered event a no-op.
+        await db
+          .insert(payments)
+          .values({
+            orgId,
+            residentId,
+            amount: fromCents(cents),
+            receivedOn: todayIso(),
+            method: "card",
+            payerName: session.metadata?.payerName || null,
+            reference: paymentIntentId,
+            stripeSessionId: session.id,
+            stripePaymentIntentId: paymentIntentId,
+            stripeChargeId,
+          })
+          .onConflictDoNothing();
+        break;
+      }
+      case "refund.created":
+      case "refund.updated":
+      case "refund.failed":
+        await reconcileRefund(event.data.object, event.created);
+        break;
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.closed":
+        await reconcileDispute(event.data.object, event.created);
+        break;
+    }
+  } catch (error) {
+    console.error(`[stripe] could not reconcile ${event.type}`, error);
+    return NextResponse.json(
+      { error: "Stripe event could not be reconciled." },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ received: true });
 }

@@ -9,8 +9,10 @@ import {
   houses,
   charges,
   payments,
+  paymentDisputes,
   paymentLinks,
   paymentPromises,
+  paymentRefunds,
 } from "@/db/schema";
 import { getAccess } from "@/lib/access";
 import { residentsWithSignedFeeSchedule } from "@/lib/fee-schedule";
@@ -35,6 +37,7 @@ import {
   revokePaymentLink,
   waiveCharge,
 } from "./actions";
+import { RefundPaymentForm } from "./refund-payment-form";
 
 export const metadata: Metadata = { title: "Rent" };
 
@@ -93,7 +96,8 @@ export default async function BillingPage() {
 
   const residentIds = roster.map((r) => r.id);
 
-  const [allCharges, allPayments, openPromises] = residentIds.length
+  const [allCharges, allPayments, openPromises, allRefunds, allDisputes] =
+    residentIds.length
     ? await Promise.all([
         db
           .select()
@@ -125,8 +129,18 @@ export default async function BillingPage() {
               isNull(paymentPromises.closedAt),
             ),
           ),
+        db
+          .select()
+          .from(paymentRefunds)
+          .where(eq(paymentRefunds.orgId, orgId))
+          .orderBy(desc(paymentRefunds.createdAt)),
+        db
+          .select()
+          .from(paymentDisputes)
+          .where(eq(paymentDisputes.orgId, orgId))
+          .orderBy(desc(paymentDisputes.openedAt)),
       ])
-    : [[], [], []];
+    : [[], [], [], [], []];
 
   const feeScheduleSigned = await residentsWithSignedFeeSchedule(
     residentIds,
@@ -257,6 +271,16 @@ export default async function BillingPage() {
                 const weekly = weeklyCents(r.rate, r.period);
                 const behind = s.balance > 0;
                 const links = activeLinks.filter((l) => l.residentId === r.id);
+                const residentPaymentIds = new Set(
+                  allPayments
+                    .filter((payment) => payment.residentId === r.id)
+                    .map((payment) => payment.id),
+                );
+                const openDisputes = allDisputes.filter(
+                  (dispute) =>
+                    residentPaymentIds.has(dispute.paymentId) &&
+                    !dispute.closedAt,
+                );
 
                 return (
                   <li
@@ -315,6 +339,36 @@ export default async function BillingPage() {
                             Close
                           </button>
                         </form>
+                      </div>
+                    )}
+
+                    {openDisputes.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          <div>
+                            <p className="font-medium">
+                              {openDisputes.length} card payment
+                              {openDisputes.length === 1 ? " is" : "s are"}{" "}
+                              disputed
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              The balance stays unchanged until Stripe decides.
+                            </p>
+                            {openDisputes.map((dispute) => (
+                              <p
+                                key={dispute.id}
+                                className="mt-1 text-xs text-muted-foreground"
+                              >
+                                {money(toCents(dispute.amount))} ·{` `}
+                                {dispute.status.replaceAll("_", " ")}
+                                {dispute.evidenceDueBy
+                                  ? ` · evidence due ${dispute.evidenceDueBy.toLocaleDateString("en-US")}`
+                                  : ""}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -626,20 +680,88 @@ export default async function BillingPage() {
                       <ul className="mt-3 space-y-1.5 text-sm">
                         {allPayments
                           .filter((p) => p.residentId === r.id)
-                          .map((p) => (
-                            <li key={p.id} className="flex gap-3">
-                              <span className="w-24 shrink-0 text-muted-foreground">
-                                {p.receivedOn}
-                              </span>
-                              <span className="font-medium text-accent">
-                                +{money(toCents(p.amount))}
-                              </span>
-                              <span className="text-muted-foreground">
-                                {PAYMENT_METHOD_LABELS[p.method]}
-                                {p.payerName ? ` · ${p.payerName}` : ""}
-                              </span>
-                            </li>
-                          ))}
+                          .map((p) => {
+                            const cents = toCents(p.amount);
+                            const receipt = p.kind === "receipt";
+                            const refunds = allRefunds.filter(
+                              (refund) => refund.paymentId === p.id,
+                            );
+                            const reservedRefundCents = refunds
+                              .filter(
+                                (refund) =>
+                                  refund.status !== "failed" &&
+                                  refund.status !== "canceled",
+                              )
+                              .reduce(
+                                (sum, refund) =>
+                                  sum + toCents(refund.amount),
+                                0,
+                              );
+                            const remainingCents = Math.max(
+                              0,
+                              cents - reservedRefundCents,
+                            );
+                            const hasOpenDispute = allDisputes.some(
+                              (dispute) =>
+                                dispute.paymentId === p.id &&
+                                !dispute.closedAt,
+                            );
+                            const hasPaymentIntent =
+                              !!p.stripePaymentIntentId ||
+                              !!p.reference?.startsWith("pi_");
+                            const label = receipt
+                              ? PAYMENT_METHOD_LABELS[p.method]
+                              : p.kind === "refund"
+                                ? "Card refund"
+                                : "Card payment reversed after dispute";
+
+                            return (
+                              <li key={p.id} className="space-y-2">
+                                <div className="flex gap-3">
+                                  <span className="w-24 shrink-0 text-muted-foreground">
+                                    {p.receivedOn}
+                                  </span>
+                                  <span
+                                    className={`font-medium ${
+                                      receipt ? "text-accent" : "text-red-700"
+                                    }`}
+                                  >
+                                    {receipt ? "+" : "-"}
+                                    {money(Math.abs(cents))}
+                                  </span>
+                                  <span className="text-muted-foreground">
+                                    {label}
+                                    {p.payerName ? ` · ${p.payerName}` : ""}
+                                  </span>
+                                </div>
+                                {receipt && refunds.length > 0 && (
+                                  <ul className="ml-27 space-y-1 text-xs text-muted-foreground">
+                                    {refunds.map((refund) => (
+                                      <li key={refund.id}>
+                                        Refund {money(toCents(refund.amount))} ·{` `}
+                                        {refund.status.replaceAll("_", " ")}
+                                        {refund.failureReason
+                                          ? ` · ${refund.failureReason}`
+                                          : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {access.isAdmin &&
+                                  receipt &&
+                                  p.method === "card" &&
+                                  hasPaymentIntent &&
+                                  remainingCents > 0 &&
+                                  !hasOpenDispute && (
+                                    <RefundPaymentForm
+                                      paymentId={p.id}
+                                      remainingCents={remainingCents}
+                                      payerName={p.payerName}
+                                    />
+                                  )}
+                              </li>
+                            );
+                          })}
                         {allCharges
                           .filter((c) => c.residentId === r.id)
                           .map((c) => (

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { residents, beds } from "@/db/schema";
 import { getAccess } from "@/lib/access";
@@ -33,7 +33,12 @@ export default async function ResidentsPage() {
     rows = await db
       .select()
       .from(residents)
-      .where(and(eq(residents.orgId, orgId), ne(residents.status, "prospect")))
+      .where(
+        and(
+          eq(residents.orgId, orgId),
+          inArray(residents.status, ["active", "discharged", "alumni"]),
+        ),
+      )
       .orderBy(desc(residents.createdAt));
   } else if ((access.houseIds ?? []).length > 0) {
     // Managers see only residents placed in one of their houses.
@@ -49,7 +54,7 @@ export default async function ResidentsPage() {
         .where(
           and(
             eq(residents.orgId, orgId),
-            ne(residents.status, "prospect"),
+            inArray(residents.status, ["active", "discharged", "alumni"]),
             inArray(residents.bedId, bedIds),
           ),
         )

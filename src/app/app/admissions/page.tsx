@@ -2,18 +2,27 @@ import type { Metadata } from "next";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Phone, Mail, CalendarClock, ListOrdered, BedDouble, BellRing, MessageSquare, BedSingle, X } from "lucide-react";
 import { db } from "@/db";
-import { residents, beds, rooms, houses } from "@/db/schema";
+import {
+  applicationContactAttempts,
+  applicationDecisions,
+  residents,
+  beds,
+  rooms,
+  houses,
+} from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import {
   acceptProspect,
   holdBed,
   releaseHold,
-  rejectProspect,
   addToWaitlist,
   removeFromWaitlist,
   notifyNextInLine,
   textNextInLine,
+  recordApplicationContactAttempt,
+  reopenApplication,
 } from "./actions";
+import { ApplicationDecisionForm } from "./application-decision-form";
 
 export const metadata: Metadata = { title: "Admissions" };
 
@@ -28,6 +37,7 @@ function fmtDate(value: string | Date | null) {
 }
 
 type BedOption = { id: string; label: string; house: string; room: string };
+type ContactAttempt = typeof applicationContactAttempts.$inferSelect;
 
 function Detail({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
@@ -41,11 +51,76 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function ContactAttempts({
+  residentId,
+  attempts,
+}: {
+  residentId: string;
+  attempts: ContactAttempt[];
+}) {
+  return (
+    <details className="mt-4 rounded-lg border border-border bg-surface-muted/40 p-3">
+      <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary">
+        Contact attempts{attempts.length ? ` (${attempts.length})` : ""}
+      </summary>
+      {attempts.length > 0 && (
+        <ul className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+          {attempts.map((attempt) => (
+            <li key={attempt.id}>
+              {fmtDate(attempt.attemptedAt)} · {attempt.channel.replaceAll("_", " ")} ·{` `}
+              {attempt.note}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        action={recordApplicationContactAttempt}
+        className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-4"
+      >
+        <input type="hidden" name="residentId" value={residentId} />
+        <select
+          name="channel"
+          required
+          defaultValue=""
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
+        >
+          <option value="" disabled>Channel</option>
+          <option value="phone">Phone call</option>
+          <option value="email">Email</option>
+          <option value="text">Text</option>
+          <option value="other">Other</option>
+        </select>
+        <input
+          type="date"
+          name="attemptedOn"
+          required
+          defaultValue={new Date().toISOString().slice(0, 10)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
+        />
+        <input
+          name="note"
+          required
+          minLength={5}
+          maxLength={500}
+          placeholder="Called; voicemail left"
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/40 sm:col-span-2"
+        />
+        <button
+          type="submit"
+          className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-surface px-3 text-xs font-medium transition hover:border-primary hover:text-primary"
+        >
+          Log attempt
+        </button>
+      </form>
+    </details>
+  );
+}
+
 export default async function AdmissionsPage() {
   const access = await requireAdmin();
   const orgId = access.orgId;
 
-  const [prospects, availableBeds] = await Promise.all([
+  const [prospects, availableBeds, contactAttempts, closedApplications, decisions] = await Promise.all([
     db
       .select()
       .from(residents)
@@ -63,6 +138,26 @@ export default async function AdmissionsPage() {
       .innerJoin(houses, eq(beds.houseId, houses.id))
       .where(and(eq(houses.orgId, orgId), eq(beds.status, "available")))
       .orderBy(asc(houses.name), asc(beds.label)),
+    db
+      .select()
+      .from(applicationContactAttempts)
+      .where(eq(applicationContactAttempts.orgId, orgId))
+      .orderBy(desc(applicationContactAttempts.attemptedAt)),
+    db
+      .select()
+      .from(residents)
+      .where(
+        and(
+          eq(residents.orgId, orgId),
+          inArray(residents.status, ["rejected", "withdrawn", "unresponsive"]),
+        ),
+      )
+      .orderBy(desc(residents.updatedAt)),
+    db
+      .select()
+      .from(applicationDecisions)
+      .where(eq(applicationDecisions.orgId, orgId))
+      .orderBy(desc(applicationDecisions.createdAt)),
   ]);
 
   const bedOptions: BedOption[] = availableBeds;
@@ -136,6 +231,9 @@ export default async function AdmissionsPage() {
             <div className="mt-4 space-y-5">
               {newApplications.map((p) => {
                 const held = p.bedId ? heldById.get(p.bedId) : null;
+                const applicantAttempts = contactAttempts.filter(
+                  (attempt) => attempt.residentId === p.id,
+                );
                 return (
             <article
               key={p.id}
@@ -217,6 +315,11 @@ export default async function AdmissionsPage() {
                 </div>
               )}
 
+              <ContactAttempts
+                residentId={p.id}
+                attempts={applicantAttempts}
+              />
+
               <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-border pt-5">
                 <form action={acceptProspect} className="flex items-end gap-2">
                   <input type="hidden" name="id" value={p.id} />
@@ -289,15 +392,7 @@ export default async function AdmissionsPage() {
                   </button>
                 </form>
 
-                <form action={rejectProspect} className="ml-auto">
-                  <input type="hidden" name="id" value={p.id} />
-                  <button
-                    type="submit"
-                    className="inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
-                  >
-                    Decline
-                  </button>
-                </form>
+                <ApplicationDecisionForm residentId={p.id} />
               </div>
             </article>
                 );
@@ -358,6 +453,13 @@ export default async function AdmissionsPage() {
                         </div>
                       </div>
                     </div>
+
+                    <ContactAttempts
+                      residentId={p.id}
+                      attempts={contactAttempts.filter(
+                        (attempt) => attempt.residentId === p.id,
+                      )}
+                    />
 
                     <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
                       <form
@@ -428,15 +530,7 @@ export default async function AdmissionsPage() {
                         </button>
                       </form>
 
-                      <form action={rejectProspect} className="ml-auto">
-                        <input type="hidden" name="id" value={p.id} />
-                        <button
-                          type="submit"
-                          className="inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-muted-foreground transition hover:bg-surface-muted hover:text-red-600"
-                        >
-                          Decline
-                        </button>
-                      </form>
+                      <ApplicationDecisionForm residentId={p.id} />
                     </div>
                   </article>
                 ))}
@@ -444,6 +538,87 @@ export default async function AdmissionsPage() {
             </>
           )}
         </>
+      )}
+
+      {closedApplications.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Closed applications
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Denials, withdrawals, and no-response closures are kept separate
+            from residents who were admitted.
+          </p>
+          <ul className="mt-4 space-y-3">
+            {closedApplications.map((application) => {
+              const history = decisions.filter(
+                (decision) => decision.residentId === application.id,
+              );
+              const latest = history[0];
+              return (
+                <li
+                  key={application.id}
+                  className="rounded-xl border border-border bg-surface p-5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">
+                        {application.firstName} {application.lastName}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {application.status === "rejected"
+                          ? "Declined"
+                          : application.status === "withdrawn"
+                            ? "Applicant withdrew"
+                            : "Closed after no response"}
+                        {latest ? ` · ${fmtDate(latest.createdAt)}` : ""}
+                      </p>
+                    </div>
+                    <form action={reopenApplication} className="flex gap-2">
+                      <input
+                        type="hidden"
+                        name="residentId"
+                        value={application.id}
+                      />
+                      <input
+                        name="note"
+                        required
+                        minLength={10}
+                        placeholder="Why review is reopening"
+                        className="rounded-lg border border-border bg-surface px-3 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-ring/40"
+                      />
+                      <button
+                        type="submit"
+                        className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-xs font-medium transition hover:border-primary hover:text-primary"
+                      >
+                        Reopen
+                      </button>
+                    </form>
+                  </div>
+                  {history.length > 0 && (
+                    <details className="mt-3 border-t border-border pt-3">
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                        Decision history ({history.length})
+                      </summary>
+                      <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
+                        {history.map((decision) => (
+                          <li key={decision.id}>
+                            {fmtDate(decision.createdAt)} ·{` `}
+                            {decision.outcome.replaceAll("_", " ")}
+                            {decision.declineReason
+                              ? ` · ${decision.declineReason.replaceAll("_", " ")}`
+                              : ""}
+                            <span className="block">{decision.note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
     </div>
   );

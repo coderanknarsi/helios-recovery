@@ -54,10 +54,22 @@ export async function startCheckout(formData: FormData) {
   if (link.thirdParty && !payerName) return;
 
   const origin = await currentOrigin();
+  const paymentMethodConfiguration =
+    process.env.STRIPE_RENT_PAYMENT_METHOD_CONFIGURATION_ID;
+  if (!paymentMethodConfiguration) {
+    throw new Error("Rent payment methods are not configured.");
+  }
+  const metadata = {
+    orgId: link.orgId,
+    residentId: link.residentId,
+    linkId: link.id,
+    payerName,
+  };
   const session = await requireStripe().checkout.sessions.create({
     mode: "payment",
     // Tags these sessions in the Dashboard so rent is separable from anything later.
     integration_identifier: "helios-rent-wnbtxqvh",
+    payment_method_configuration: paymentMethodConfiguration,
     line_items: [
       {
         quantity: 1,
@@ -69,12 +81,9 @@ export async function startCheckout(formData: FormData) {
       },
     ],
     // The webhook trusts these and nothing the browser sends.
-    metadata: {
-      orgId: link.orgId,
-      residentId: link.residentId,
-      linkId: link.id,
-      payerName,
-    },
+    metadata,
+    // Preserves the same correlation if Stripe events contain only the Intent.
+    payment_intent_data: { metadata },
     success_url: `${origin}/pay/${token}?paid=1`,
     cancel_url: `${origin}/pay/${token}`,
   });

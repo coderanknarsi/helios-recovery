@@ -4,6 +4,7 @@ import { CheckCircle2, Lock } from "lucide-react";
 import { db } from "@/db";
 import { organizations, paymentLinks } from "@/db/schema";
 import { money, toCents } from "@/lib/billing";
+import { stripeEnabled } from "@/lib/stripe";
 import { startCheckout } from "./actions";
 
 export const metadata: Metadata = {
@@ -56,6 +57,8 @@ export default async function PayPage({
   }
 
   const fixed = link.amount ? toCents(link.amount) : null;
+  const paymentsReady =
+    stripeEnabled && !!process.env.STRIPE_RENT_PAYMENT_METHOD_CONFIGURATION_ID;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md items-center px-4 py-10">
@@ -79,6 +82,7 @@ export default async function PayPage({
             Rent payment for {link.label}
           </p>
 
+          {paymentsReady ? (
           <form action={startCheckout} className="mt-5 space-y-4">
             <input type="hidden" name="token" value={token} />
 
@@ -130,6 +134,14 @@ export default async function PayPage({
               Continue to payment
             </button>
           </form>
+          ) : (
+            <div className="mt-5 rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium">Card payments are unavailable</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Contact the residence for another way to pay.
+              </p>
+            </div>
+          )}
         </div>
 
         <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">

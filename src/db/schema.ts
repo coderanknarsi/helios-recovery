@@ -9,6 +9,7 @@ import {
   pgEnum,
   uniqueIndex,
   boolean,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -31,7 +32,39 @@ export const residentStatus = pgEnum("resident_status", [
   "discharged",
   "alumni",
   "rejected",
+  "withdrawn",
+  "unresponsive",
 ]);
+
+export const applicationDecisionOutcome = pgEnum(
+  "application_decision_outcome",
+  ["declined", "withdrawn", "unresponsive", "reopened"],
+);
+
+export const applicationDeclineReason = pgEnum(
+  "application_decline_reason",
+  [
+    "published_eligibility_not_met",
+    "requested_services_outside_nonclinical_scope",
+    "documented_direct_safety_risk",
+    "other_policy_criterion",
+  ],
+);
+
+export const accommodationReviewStatus = pgEnum(
+  "accommodation_review_status",
+  [
+    "not_applicable_or_not_requested",
+    "request_considered",
+    "accommodation_offered",
+    "accommodation_declined",
+  ],
+);
+
+export const applicationContactChannel = pgEnum(
+  "application_contact_channel",
+  ["phone", "email", "text", "other"],
+);
 
 export const bedStatus = pgEnum("bed_status", [
   "available",
@@ -192,6 +225,20 @@ export const paymentMethod = pgEnum("payment_method", [
   "other",
 ]);
 
+export const paymentEntryKind = pgEnum("payment_entry_kind", [
+  "receipt",
+  "refund",
+  "chargeback_reversal",
+]);
+
+export const paymentRefundReason = pgEnum("payment_refund_reason", [
+  "resident_request",
+  "duplicate",
+  "payment_error",
+  "departure_or_policy",
+  "other",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -320,6 +367,60 @@ export const residents = pgTable("residents", {
     .defaultNow()
     .notNull(),
 }).enableRLS();
+
+/**
+ * Every terminal application decision is append-only. Reopening creates a new
+ * event rather than erasing the original decision and its contemporaneous note.
+ */
+export const applicationDecisions = pgTable("application_decisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  residentId: uuid("resident_id")
+    .notNull()
+    .references(() => residents.id, { onDelete: "cascade" }),
+  outcome: applicationDecisionOutcome("outcome").notNull(),
+  declineReason: applicationDeclineReason("decline_reason"),
+  note: text("note").notNull(),
+  accommodationReview: accommodationReviewStatus("accommodation_review"),
+  decidedBy: uuid("decided_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/** Evidence of attempts to reach an applicant before closing for no response. */
+export const applicationContactAttempts = pgTable(
+  "application_contact_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    residentId: uuid("resident_id")
+      .notNull()
+      .references(() => residents.id, { onDelete: "cascade" }),
+    channel: applicationContactChannel("channel").notNull(),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull(),
+    note: text("note").notNull(),
+    attemptedBy: uuid("attempted_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("application_contact_attempt_idx").on(
+      table.residentId,
+      table.channel,
+      table.attemptedAt,
+    ),
+  ],
+).enableRLS();
 
 /** A timeline entry on a resident: note, drug test, infraction, pass, chore, medication. */
 export const residentLogs = pgTable("resident_logs", {
@@ -788,12 +889,94 @@ export const payments = pgTable("payments", {
   /** Check number, transfer reference, or later the Stripe payment intent. */
   reference: text("reference"),
   note: text("note"),
+  kind: paymentEntryKind("kind").notNull().default("receipt"),
+  /** Negative refund/reversal rows point back to the receipt they offset. */
+  reversalOfId: uuid("reversal_of_id").references(
+    (): AnyPgColumn => payments.id,
+    { onDelete: "restrict" },
+  ),
   /** Unique so a replayed Stripe webhook cannot double-credit an account. */
   stripeSessionId: text("stripe_session_id").unique(),
+  /** Stored separately from manual references so Stripe events reconcile safely. */
+  stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
+  stripeChargeId: text("stripe_charge_id").unique(),
+  /** Refund (`re_`) or dispute (`dp_`) ID; unique makes webhooks idempotent. */
+  stripeAdjustmentId: text("stripe_adjustment_id").unique(),
   recordedBy: uuid("recorded_by").references(() => profiles.id, {
     onDelete: "set null",
   }),
   createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * A refund request and Stripe's lifecycle for it. The linked negative payment
+ * is added only after Stripe reports success; a request alone never changes a
+ * resident's balance.
+ */
+export const paymentRefunds = pgTable("payment_refunds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .references(() => payments.id, { onDelete: "restrict" }),
+  /** Present for Helios-initiated refunds; null for Stripe Dashboard refunds. */
+  requestKey: text("request_key").unique(),
+  stripeRefundId: text("stripe_refund_id").unique(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull().default("requested"),
+  reason: paymentRefundReason("reason").notNull(),
+  staffNote: text("staff_note").notNull(),
+  requestedBy: uuid("requested_by").references(() => profiles.id, {
+    onDelete: "set null",
+  }),
+  failureReason: text("failure_reason"),
+  reversalPaymentId: uuid("reversal_payment_id").references(() => payments.id, {
+    onDelete: "set null",
+  }),
+  stripeEventCreatedAt: timestamp("stripe_event_created_at", {
+    withTimezone: true,
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}).enableRLS();
+
+/**
+ * A cardholder dispute is tracked separately from the resident ledger while
+ * it is open. Only a final loss creates a linked negative payment.
+ */
+export const paymentDisputes = pgTable("payment_disputes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .references(() => payments.id, { onDelete: "restrict" }),
+  stripeDisputeId: text("stripe_dispute_id").notNull().unique(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull(),
+  reason: text("reason"),
+  evidenceDueBy: timestamp("evidence_due_by", { withTimezone: true }),
+  openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  reversalPaymentId: uuid("reversal_payment_id").references(() => payments.id, {
+    onDelete: "set null",
+  }),
+  stripeEventCreatedAt: timestamp("stripe_event_created_at", {
+    withTimezone: true,
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 }).enableRLS();
@@ -1051,6 +1234,17 @@ export type House = typeof houses.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Bed = typeof beds.$inferSelect;
 export type Resident = typeof residents.$inferSelect;
+export type ApplicationDecision = typeof applicationDecisions.$inferSelect;
+export type ApplicationContactAttempt =
+  typeof applicationContactAttempts.$inferSelect;
+export type ApplicationDecisionOutcome =
+  (typeof applicationDecisionOutcome.enumValues)[number];
+export type ApplicationDeclineReason =
+  (typeof applicationDeclineReason.enumValues)[number];
+export type AccommodationReviewStatus =
+  (typeof accommodationReviewStatus.enumValues)[number];
+export type ApplicationContactChannel =
+  (typeof applicationContactChannel.enumValues)[number];
 export type ResidentLog = typeof residentLogs.$inferSelect;
 export type HouseAssignment = typeof houseAssignments.$inferSelect;
 export type IntakeDocument = typeof intakeDocuments.$inferSelect;
@@ -1074,10 +1268,15 @@ export type ExitReason = (typeof exitReason.enumValues)[number];
 export type ExitParticipation = (typeof exitParticipation.enumValues)[number];
 export type Charge = typeof charges.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type PaymentRefund = typeof paymentRefunds.$inferSelect;
+export type PaymentDispute = typeof paymentDisputes.$inferSelect;
 export type PaymentPromise = typeof paymentPromises.$inferSelect;
 export type PaymentLink = typeof paymentLinks.$inferSelect;
 export type ChargeType = (typeof chargeType.enumValues)[number];
 export type PaymentMethod = (typeof paymentMethod.enumValues)[number];
+export type PaymentEntryKind = (typeof paymentEntryKind.enumValues)[number];
+export type PaymentRefundReason =
+  (typeof paymentRefundReason.enumValues)[number];
 export type RatePeriod = (typeof ratePeriod.enumValues)[number];
 export type Grievance = typeof grievances.$inferSelect;
 export type GrievanceUpdate = typeof grievanceUpdates.$inferSelect;
