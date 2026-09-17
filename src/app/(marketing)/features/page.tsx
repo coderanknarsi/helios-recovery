@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import {
   BedDouble,
   Utensils,
@@ -12,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
+import { housePhotos } from "@/lib/photos";
 
 export const metadata: Metadata = {
   title: "Our Homes",
@@ -76,6 +78,32 @@ export default function FeaturesPage() {
             Every Helios residence combines a comfortable place to live with the
             accountability and community that make recovery stick.
           </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <h2 className="text-2xl font-semibold">Take a look inside</h2>
+        <p className="mt-2 max-w-2xl text-muted-foreground">
+          Photos from our Spencer home — furnished bedrooms, shared living
+          space, and room to breathe.
+        </p>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {housePhotos.map((photo, i) => (
+            <figure
+              key={photo.src}
+              className="overflow-hidden rounded-xl border border-border bg-surface"
+            >
+              <Image
+                src={photo.src}
+                alt={photo.alt}
+                width={photo.width}
+                height={photo.height}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                priority={i === 0}
+                className="h-56 w-full object-cover sm:h-64"
+              />
+            </figure>
+          ))}
         </div>
       </section>
 

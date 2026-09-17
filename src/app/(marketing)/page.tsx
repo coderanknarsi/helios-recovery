@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
 import {
   ShieldCheck,
   HeartHandshake,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { siteConfig } from "@/lib/site";
+import { featuredPhotos } from "@/lib/photos";
 
 export const metadata: Metadata = {
   description: siteConfig.description,
@@ -114,6 +117,29 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Photos */}
+      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {featuredPhotos.map((photo, i) => (
+            <Image
+              key={photo.src}
+              src={photo.src}
+              alt={photo.alt}
+              width={photo.width}
+              height={photo.height}
+              sizes="(min-width: 640px) 33vw, 100vw"
+              priority={i === 0}
+              className="h-56 w-full rounded-xl border border-border object-cover sm:h-64"
+            />
+          ))}
+        </div>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          <Link href="/features" className="font-medium text-primary hover:underline">
+            See more photos of our homes
+          </Link>
+        </p>
       </section>
 
       {/* Stats */}
