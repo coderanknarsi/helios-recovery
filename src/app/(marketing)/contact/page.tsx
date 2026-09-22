@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Contact & Apply",
   description:
     "Apply for a bed or reach out to Helios Recovery Residences. We respond quickly and treat every inquiry with care and confidentiality.",
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {

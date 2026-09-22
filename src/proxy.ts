@@ -8,6 +8,13 @@ import {
 export async function proxy(request: NextRequest) {
   const response = await updateSession(request);
 
+  // *.vercel.app serves a byte-identical copy of the site. Left indexable it
+  // competes with the real domain for the same pages, which is why Search
+  // Console reports duplicates instead of indexing them.
+  if ((request.headers.get("host") ?? "").endsWith(".vercel.app")) {
+    response.headers.set("x-robots-tag", "noindex, nofollow");
+  }
+
   // Slide the resident session cookie forward on every page view. Server
   // components cannot set cookies, so without this the browser cookie would
   // expire on a fixed schedule and force an unnecessary (paid) SMS sign-in

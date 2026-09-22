@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "About",
   description:
     "Helios Recovery Residences was founded to give people in recovery a safe, structured, and dignified place to rebuild their lives.",
+  alternates: { canonical: "/about" },
 };
 
 export default function AboutPage() {

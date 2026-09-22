@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Apply for a Bed",
   description:
     "Apply for a bed at Helios Recovery Residences. A short application to start the conversation — handled with care and confidentiality.",
+  alternates: { canonical: "/apply" },
 };
 
 const assurances = [

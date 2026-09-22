@@ -19,6 +19,7 @@ import { featuredPhotos } from "@/lib/photos";
 
 export const metadata: Metadata = {
   description: siteConfig.description,
+  alternates: { canonical: "/" },
 };
 
 const values = [

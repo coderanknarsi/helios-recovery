@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Our Homes",
   description:
     "Structured, substance-free sober living homes with the accountability, amenities, and community that support lasting recovery.",
+  alternates: { canonical: "/features" },
 };
 
 const amenities = [
