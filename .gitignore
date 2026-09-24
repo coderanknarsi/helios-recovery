@@ -45,4 +45,9 @@ next-env.d.ts
 # Never commit or deploy these.
 /NARR Docs/
 
+# Print collateral generated locally, not part of the site build.
+/flyer.pdf
+/.flyer-preview.png
+/public/flyer/
+
 .vercel
